@@ -1,6 +1,7 @@
 name: Build & Package
 
-# Builds the installable Python artifacts (wheel + sdist), verifies the wheel
+# Lints (ruff + format check) and security-scans (bandit) the source, then
+# builds the installable Python artifacts (wheel + sdist), verifies the wheel
 # installs cleanly in a fresh environment and exposes the `pr-decorator` CLI,
 # and uploads the artifacts. On version tags (v*): publishes to PyPI via Trusted
 # Publishing and attaches the artifacts to a GitHub Release.
@@ -16,7 +17,31 @@ permissions:
   contents: read # least-privilege default; jobs that need more opt in below
 
 jobs:
+  lint:
+    # Quality + security gate. `build` depends on this, so a lint, formatting,
+    # or security regression fails the pipeline before anything is packaged.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Ruff lint
+        run: uvx ruff check --output-format=github .
+
+      - name: Ruff format check
+        run: uvx ruff format --check .
+
+      - name: Bandit security scan
+        # Scan the shipped source only (skip tests/ and the venv). -ll: report
+        # medium+ severity issues; the run fails if any are found.
+        run: uvx bandit -r -ll agent main.py
+
   build:
+    needs: lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
