@@ -115,33 +115,40 @@ pr-decorator/
 
 ---
 
-## Local Setup — Build & Validate
+## Installation & Usage
 
 ### 1. Prerequisites
-- Python **3.12** (see `.python-version`).
-- [`uv`](https://docs.astral.sh/uv/) (recommended) or plain `venv` + `pip`.
+- Python **3.10+**.
+- `git` on your `PATH` (the CLI shells out to it to read diffs).
 - AWS credentials with Bedrock access in your target region, and **model access
   to Amazon Nova Pro enabled** in the Bedrock console
   (*Bedrock → Model access → Nova Pro*).
 
-### 2. Build (create venv + install)
+### 2. Install
 
-With `uv`:
+Install the published package — this puts the `pr-decorator` command on your `PATH`:
+
 ```bash
-uv venv --python 3.12 .venv
-uv pip install -e ".[dev]"
+pip install pr-decorator
+# or, with uv:
+uv pip install pr-decorator
+# or run without installing into your environment:
+uvx pr-decorator --help
 ```
 
-Or with stock Python:
+To keep it isolated from your other tools, install it via [`pipx`](https://pipx.pypa.io/):
 ```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+pipx install pr-decorator
+```
+
+Confirm it's available:
+```bash
+pr-decorator --help
 ```
 
 ### 3. Configure AWS
 
-Auth uses the standard credential chain — **never hardcode keys**. Any of:
+Auth uses the standard AWS credential chain — **never hardcode keys**. Use any of:
 ```bash
 aws configure                  # writes ~/.aws/credentials + config
 # or
@@ -149,33 +156,34 @@ aws sso login --profile <p> && export AWS_PROFILE=<p>
 # or export AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN
 ```
 
-Optional overrides (defaults shown):
+Optional environment overrides (defaults shown):
 ```bash
 export BEDROCK_REGION=ap-south-1
 export BEDROCK_MODEL_ID=apac.amazon.nova-pro-v1:0
 ```
 
-Verify credentials + Bedrock reachability before running the agent:
+Verify credentials + region reach AWS before running the agent:
 ```bash
-.venv/bin/python -c "import boto3; print(boto3.client('sts', region_name='ap-south-1').get_caller_identity()['Account'])"
+python -c "import boto3; print(boto3.client('sts', region_name='ap-south-1').get_caller_identity()['Account'])"
 ```
 
 ### 4. Run
 
+Run `pr-decorator` from inside the git repository whose changes you want to decorate:
+
 ```bash
 # Zero-arg: auto-detect base (origin/main → main → master), diff the current
 # branch against it, and auto-fill branch + commit messages. Just run:
-uv run main.py
-# (or: .venv/bin/python main.py)
+pr-decorator
 
 # Override the range / branch / ticket explicitly:
-.venv/bin/python main.py --range origin/main...HEAD --branch "$(git branch --show-current)"
+pr-decorator --range origin/main...HEAD --branch "$(git branch --show-current)"
 
 # Or pipe any diff in:
-git diff origin/main | .venv/bin/python main.py --format markdown
+git diff origin/main | pr-decorator --format markdown
 
 # From a saved diff file, JSON output, with an explicit ticket:
-.venv/bin/python main.py --diff-file changes.diff --ticket-id PRD-1 --format json
+pr-decorator --diff-file changes.diff --ticket-id PRD-1 --format json
 ```
 
 Useful flags: `--model`, `--region`, `--format {markdown,json}`, `--no-write`
@@ -189,7 +197,8 @@ capped via `MR_MAX_FILE_CHARS` / `MR_MAX_TOTAL_CHARS` env vars.
 A successful run:
 - exits with code **0** (non-zero means a required section failed validation),
 - prints the decorated MR to stdout, and
-- writes `output/mr_report.md` (or `.json`) **and** `output/agent_trace.json`.
+- writes `output/mr_report.md` (or `.json`) **and** `output/agent_trace.json`
+  in the current working directory.
 
 Check the trace to confirm the Bedrock call landed — look for an `execute`
 entry with `"ok": true` and a `finish` entry with `"ok": true`:
@@ -197,29 +206,21 @@ entry with `"ok": true` and a `finish` entry with `"ok": true`:
 cat output/agent_trace.json
 ```
 
-Smoke-test the full loop **offline** (no AWS needed) with a stubbed client:
-```bash
-.venv/bin/python - <<'PY'
-from agent import loop, render
-from agent.execute import BedrockExecutor
-
-class Stub:
-    def converse(self, **kw):
-        payload = '{"title":"Add feature","sections":{"Purpose":"x","Ticket ID":"PRD-1","Code Changes":"y","Features Added":"","Linting Fixed":"","Bug Fixed":""}}'
-        return {"output": {"message": {"content": [{"text": payload}]}}}
-
-res = loop.run("diff --git a/f b/f\n+x\n", executor=BedrockExecutor(client=Stub()), branch="feat/PRD-1")
-print(render.to_markdown(res.report))
-print("ok:", res.validation.ok)
-PY
-```
-
-> **Note:** Per project policy there are no unit tests to execute; validation
-> is done by running the agent and inspecting the output + trace as above.
-
 > **Missing AWS credentials?** If no credentials resolve from the chain, the run
 > stops immediately (it does **not** retry) with a clear message —
 > `error: AWS credentials are missing. ...` — and exits with code `2`.
+
+### Develop from source
+
+Contributing to `pr-decorator` itself? Clone the repo and use an editable install
+(Python 3.12 recommended — see `.python-version`):
+
+```bash
+uv venv --python 3.12 .venv && uv pip install -e ".[dev]"
+.venv/bin/pr-decorator --help        # the CLI, from your checkout
+.venv/bin/ruff check .               # lint
+.venv/bin/pytest                     # offline test suite (stubbed Bedrock, no AWS)
+```
 
 ---
 
