@@ -1,0 +1,33 @@
+[project]
+name = "pr-decorator"
+version = "0.1.0"
+description = "Agentic system that decorates Pull/Merge Requests into a standardized MR report via AWS Bedrock."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "boto3>=1.34",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+pr-decorator = "main:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["agent"]
+py-modules = ["main"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

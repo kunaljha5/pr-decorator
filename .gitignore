@@ -5,7 +5,8 @@ __pycache__/
 
 # C extensions
 *.so
-
+.idea
+.venv
 # Distribution / packaging
 .Python
 build/
@@ -216,3 +217,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Generated MR reports / agent traces (keep the dir via .gitkeep)
+output/*
+!output/.gitkeep
