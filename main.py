@@ -22,19 +22,57 @@ from agent.execute import BedrockExecutor
 _OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 
 
+def _git_diff(rng: str, context_lines: int) -> str:
+    return subprocess.run(
+        ["git", "diff", f"--unified={context_lines}", rng],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+
+def _current_branch() -> str | None:
+    result = subprocess.run(
+        ["git", "branch", "--show-current"], capture_output=True, text=True, check=False
+    )
+    return result.stdout.strip() or None
+
+
+def _detect_base() -> str | None:
+    """Pick a base ref to diff the current branch against, preferring remotes."""
+    for ref in ("origin/main", "origin/master", "main", "master"):
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", ref],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            return ref
+    return None
+
+
 def _read_diff(args: argparse.Namespace) -> str:
     if args.diff_file:
         return Path(args.diff_file).read_text(encoding="utf-8")
     if args.range:
-        return subprocess.run(
-            ["git", "diff", args.range],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout
+        return _git_diff(args.range, args.context_lines)
     if not sys.stdin.isatty():
         return sys.stdin.read()
-    raise SystemExit("No diff provided. Use --diff-file, --range, or pipe a diff via stdin.")
+
+    # Zero-arg default: decorate the current branch against its base branch.
+    base = _detect_base()
+    if not base:
+        raise SystemExit(
+            "No diff provided and no base branch found (origin/main, main, ...). "
+            "Use --diff-file, --range, or pipe a diff via stdin."
+        )
+    args.range = f"{base}...HEAD"
+    diff = _git_diff(args.range, args.context_lines)
+    if not diff.strip():
+        raise SystemExit(f"No changes between {base} and HEAD — nothing to decorate.")
+    print(f"(auto) decorating current branch vs {base} ({args.range})", file=sys.stderr)
+    return diff
 
 
 def _git_commit_messages(rng: str | None) -> list[str]:
@@ -74,6 +112,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--region",
         help="AWS region for Bedrock (default: BEDROCK_REGION env or ap-south-1).",
     )
+    parser.add_argument(
+        "--context-lines",
+        type=int,
+        default=100000,
+        help="Context lines for `git diff --unified` on --range; the large "
+        "default includes whole-file content for modified files (default: 100000).",
+    )
     return parser
 
 
@@ -91,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
     result = loop.run(
         diff,
         executor=executor,
-        branch=args.branch,
+        branch=args.branch or _current_branch(),
         commit_messages=_git_commit_messages(args.range),
         ticket_id=args.ticket_id,
     )

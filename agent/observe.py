@@ -30,7 +30,14 @@ def extract_ticket_id(*sources: str | None) -> str | None:
 
 
 def parse_diff(diff: str) -> list[FileChange]:
-    """Parse a unified git diff into per-file `FileChange` records."""
+    """Parse a unified git diff into per-file `FileChange` records.
+
+    Captures the *full* per-file diff body (hunk headers + context + added/
+    removed lines) in `patch`, not just the changed lines — so EXECUTE can hand
+    the LLM the actual content and let it judge intent. Pair with a wide
+    `git diff --unified=N` (see `main.py --context-lines`) to include whole-file
+    context for modified files.
+    """
     files: list[FileChange] = []
     current: FileChange | None = None
 
@@ -50,10 +57,11 @@ def parse_diff(diff: str) -> list[FileChange]:
             current.is_deleted = True
         elif line.startswith("+") and not line.startswith("+++"):
             current.added_lines += 1
-            current.patch += line + "\n"
         elif line.startswith("-") and not line.startswith("---"):
             current.removed_lines += 1
-            current.patch += line + "\n"
+
+        # Keep the whole body (index/--- /+++/@@/context/changes) for context.
+        current.patch += line + "\n"
 
     if current is not None:
         files.append(current)

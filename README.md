@@ -163,7 +163,12 @@ Verify credentials + Bedrock reachability before running the agent:
 ### 4. Run
 
 ```bash
-# Decorate the current branch's changes vs main:
+# Zero-arg: auto-detect base (origin/main → main → master), diff the current
+# branch against it, and auto-fill branch + commit messages. Just run:
+uv run main.py
+# (or: .venv/bin/python main.py)
+
+# Override the range / branch / ticket explicitly:
 .venv/bin/python main.py --range origin/main...HEAD --branch "$(git branch --show-current)"
 
 # Or pipe any diff in:
@@ -174,7 +179,10 @@ git diff origin/main | .venv/bin/python main.py --format markdown
 ```
 
 Useful flags: `--model`, `--region`, `--format {markdown,json}`, `--no-write`
-(print only, skip writing to `output/`).
+(print only, skip writing to `output/`), `--context-lines N` (context lines for
+`git diff --unified` on `--range`; the large default feeds whole-file content to
+the LLM so it can judge intent — lower it for very large PRs). Content size is
+capped via `MR_MAX_FILE_CHARS` / `MR_MAX_TOTAL_CHARS` env vars.
 
 ### 5. Validate it worked
 
