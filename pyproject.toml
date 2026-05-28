@@ -1,12 +1,42 @@
 [project]
 name = "pr-decorator"
 version = "0.1.0"
-description = "Agentic system that decorates Pull/Merge Requests into a standardized MR report via AWS Bedrock."
+description = "Agentic system that decorates Pull/Merge Requests into a standardized MR report via AWS Bedrock (Amazon Nova Pro)."
 readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Kunal Jha", email = "kunaljha5@gmail.com" }]
+keywords = [
+    "pull-request",
+    "merge-request",
+    "code-review",
+    "aws",
+    "bedrock",
+    "nova",
+    "git",
+    "automation",
+    "agent",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Version Control :: Git",
+    "Operating System :: OS Independent",
+]
 dependencies = [
     "boto3>=1.34",
 ]
+
+[project.urls]
+Homepage = "https://github.com/kunaljha5/pr-decorator"
+Repository = "https://github.com/kunaljha5/pr-decorator"
+Issues = "https://github.com/kunaljha5/pr-decorator/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -18,12 +48,15 @@ dev = [
 pr-decorator = "main:main"
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["agent"]
+packages = ["agent", "prompts"]
 py-modules = ["main"]
+
+[tool.setuptools.package-data]
+prompts = ["*.txt"]
 
 [tool.ruff]
 line-length = 100
@@ -31,3 +64,9 @@ target-version = "py310"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "bandit>=1.9.4",
+    "ruff>=0.15.15",
+]

@@ -34,9 +34,7 @@ _IMPERATIVE_VERBS = frozenset(
 )
 
 # Sections allowed to legitimately be empty (no such change in this PR).
-_OPTIONAL_WHEN_ABSENT = frozenset(
-    {"Features Added", "Linting Fixed", "Bug Fixed"}
-)
+_OPTIONAL_WHEN_ABSENT = frozenset({"Features Added", "Linting Fixed", "Bug Fixed"})
 
 
 def _is_imperative(title: str) -> bool:
@@ -54,9 +52,7 @@ def validate(report: MRReport) -> ValidationResult:
         errors.append("MR Title is empty.")
         failed.append("Title")
     elif not _is_imperative(report.title):
-        warnings.append(
-            f"MR Title may not be imperative mood: {report.title!r}"
-        )
+        warnings.append(f"MR Title may not be imperative mood: {report.title!r}")
 
     for section in REQUIRED_SECTIONS:
         if section == "Ticket ID":

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from . import observe as observe_phase
 from . import plan as plan_phase
 from . import validate as validate_phase
-from .execute import BedrockExecutor
+from .execute import BedrockExecutor, MissingCredentialsError
 from .models import AgentTrace, MRReport, ValidationResult
 
 MAX_RETRIES = 2
@@ -36,6 +36,10 @@ def _execute_with_retry(executor: BedrockExecutor, observation, plan, trace, *, 
             report = executor.generate(observation, plan, only_section=only_section)
             trace.record("execute", attempt=attempt, only_section=only_section, ok=True)
             return report
+        except MissingCredentialsError as exc:
+            # Non-retryable: surface immediately rather than burning retries.
+            trace.record("execute", attempt=attempt, only_section=only_section, error=str(exc))
+            raise
         except Exception as exc:  # noqa: BLE001 — retry on any Bedrock/parse failure
             last_error = exc
             trace.record("execute", attempt=attempt, only_section=only_section, error=str(exc))
@@ -85,9 +89,7 @@ def run(
             break
         trace.record("validate", attempt=attempt, errors=validation.errors)
         for section in validation.failed_sections:
-            partial = _execute_with_retry(
-                executor, observation, plan, trace, only_section=section
-            )
+            partial = _execute_with_retry(executor, observation, plan, trace, only_section=section)
             if section in partial.sections:
                 report.sections[section] = partial.sections[section]
             if partial.title and not report.title:

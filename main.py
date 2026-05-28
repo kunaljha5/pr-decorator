@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 from agent import loop, render
-from agent.execute import BedrockExecutor
+from agent.execute import BedrockExecutor, MissingCredentialsError
 
 _OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 
@@ -133,13 +133,17 @@ def main(argv: list[str] | None = None) -> int:
         executor_kwargs["model_id"] = args.model
     executor = BedrockExecutor(**executor_kwargs) if executor_kwargs else None
 
-    result = loop.run(
-        diff,
-        executor=executor,
-        branch=args.branch or _current_branch(),
-        commit_messages=_git_commit_messages(args.range),
-        ticket_id=args.ticket_id,
-    )
+    try:
+        result = loop.run(
+            diff,
+            executor=executor,
+            branch=args.branch or _current_branch(),
+            commit_messages=_git_commit_messages(args.range),
+            ticket_id=args.ticket_id,
+        )
+    except MissingCredentialsError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
     rendered = (
         render.to_json(result.report)

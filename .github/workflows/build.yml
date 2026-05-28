@@ -1,0 +1,101 @@
+name: Build & Package
+
+# Builds the installable Python artifacts (wheel + sdist), verifies the wheel
+# installs cleanly in a fresh environment and exposes the `pr-decorator` CLI,
+# and uploads the artifacts. On version tags (v*): publishes to PyPI via Trusted
+# Publishing and attaches the artifacts to a GitHub Release.
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read # least-privilege default; jobs that need more opt in below
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build wheel + sdist
+        run: uv build
+
+      - name: Show artifacts
+        run: ls -l dist/
+
+      - name: Validate package metadata (PyPI-ready)
+        run: uvx twine check dist/*
+
+      - name: Verify wheel installs in a clean venv
+        run: |
+          python -m venv /tmp/verify
+          /tmp/verify/bin/pip install --upgrade pip
+          # install ONLY the built wheel (no source tree, no editable install)
+          /tmp/verify/bin/pip install dist/*.whl
+          # the console-script entry point must exist and run
+          /tmp/verify/bin/pr-decorator --help
+          # the packaged system prompt must ship inside the wheel, or the agent
+          # crashes on its first Bedrock call once installed
+          /tmp/verify/bin/python - <<'PY'
+          from agent.execute import load_system_prompt
+          assert "PR Decorator Agent" in load_system_prompt()
+          print("packaged prompt resource loads OK")
+          PY
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-decorator-dist
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-pypi:
+    # Only on version tags (e.g. v0.1.0): publish to PyPI via Trusted Publishing.
+    # Requires a Trusted Publisher configured on PyPI (see README "Publishing to
+    # PyPI"). No API tokens are stored — auth is short-lived OIDC.
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/pr-decorator/
+    permissions:
+      id-token: write # mandatory for Trusted Publishing (OIDC)
+    steps:
+      - name: Download built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: pr-decorator-dist
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  release:
+    # Only on version tags: attach the built artifacts to a GitHub Release.
+    needs: publish-pypi
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: pr-decorator-dist
+          path: dist
+
+      - name: Attach artifacts to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

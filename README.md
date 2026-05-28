@@ -217,6 +217,65 @@ PY
 > **Note:** Per project policy there are no unit tests to execute; validation
 > is done by running the agent and inspecting the output + trace as above.
 
+> **Missing AWS credentials?** If no credentials resolve from the chain, the run
+> stops immediately (it does **not** retry) with a clear message —
+> `error: AWS credentials are missing. ...` — and exits with code `2`.
+
+---
+
+## CI / CD — Build, Package & Publish
+
+The `.github/workflows/build.yml` workflow runs on every push, PR, and version
+tag:
+
+- **build** — builds the wheel + sdist with `uv build`, validates metadata with
+  `twine check`, installs the wheel into a clean venv to confirm the
+  `pr-decorator` CLI and packaged prompt work, and uploads `dist/*` as a
+  downloadable artifact.
+- **publish-pypi** *(tags `v*` only)* — publishes to PyPI via **Trusted
+  Publishing** (OIDC; no API tokens stored).
+- **release** *(tags `v*` only)* — attaches the artifacts to a GitHub Release.
+
+### Publishing to PyPI
+
+The package is published to <https://pypi.org/project/pr-decorator/>.
+
+**One-time setup — register the GitHub repo as a Trusted Publisher on PyPI:**
+
+1. Log in to PyPI → *Your projects* → **pr-decorator** → *Settings* →
+   *Publishing* (for a brand-new name, use *Publishing* → *Add a pending
+   publisher* first).
+2. Add a GitHub Actions publisher:
+   - **Owner:** `kunaljha5`
+   - **Repository:** `pr-decorator`
+   - **Workflow name:** `build.yml`
+   - **Environment:** `pypi`
+3. In the GitHub repo, create an **Environment** named `pypi`
+   (*Settings → Environments → New environment*) — optionally add required
+   reviewers to gate releases.
+
+**Cut a release:**
+
+```bash
+# bump version in pyproject.toml first (e.g. 0.1.0 -> 0.1.1), commit, then:
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+The tag triggers build → publish-pypi → release. After it succeeds:
+
+```bash
+pip install pr-decorator        # or: uv pip install pr-decorator
+pr-decorator --help
+```
+
+> To dry-run against **TestPyPI** first, add a Trusted Publisher on
+> <https://test.pypi.org> and set `repository-url:
+> https://test.pypi.org/legacy/` on the `pypa/gh-action-pypi-publish` step.
+>
+> Manual publish without CI (needs a PyPI API token):
+> `uv build && uvx twine upload dist/*`.
+
 ---
 
 ## Success Criteria

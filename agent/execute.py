@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+from importlib.resources import files
 from pathlib import Path
 
 from .models import MRReport, Observation, Plan
@@ -19,12 +20,38 @@ _DEFAULT_REGION = os.getenv("BEDROCK_REGION") or os.getenv("AWS_REGION") or "ap-
 # inference profile, hence the `apac.` prefix. Override with BEDROCK_MODEL_ID
 # (e.g. plain "amazon.nova-pro-v1:0" in us-east-1, or "us.amazon.nova-pro-v1:0").
 _DEFAULT_MODEL_ID = os.getenv("BEDROCK_MODEL_ID") or "apac.amazon.nova-pro-v1:0"
-_PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "mr_template.txt"
+_PROMPT_NAME = "mr_template.txt"
+
+_NO_CREDS_MESSAGE = (
+    "AWS credentials are missing. The PR Decorator needs AWS credentials with "
+    "Amazon Bedrock access. Configure them via one of:\n"
+    "  - `aws configure`  (writes ~/.aws/credentials)\n"
+    "  - `aws sso login --profile <p>` then `export AWS_PROFILE=<p>`\n"
+    "  - export AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (+ AWS_SESSION_TOKEN)\n"
+    "  - an attached IAM role (EC2 / ECS / Lambda)"
+)
+
+
+class MissingCredentialsError(RuntimeError):
+    """Raised when no AWS credentials are available for the Bedrock call.
+
+    Non-retryable: retrying won't conjure credentials, so the loop surfaces this
+    immediately instead of burning retries or masking it behind a generic error.
+    """
 
 
 def load_system_prompt() -> str:
-    """Load the MR-template system prompt from disk."""
-    return _PROMPT_PATH.read_text(encoding="utf-8")
+    """Load the MR-template system prompt.
+
+    Reads it as packaged data from the `prompts` package (so it ships in the
+    wheel and resolves once installed); falls back to the repo-root file when
+    running from a source checkout that isn't installed.
+    """
+    try:
+        return (files("prompts") / _PROMPT_NAME).read_text(encoding="utf-8")
+    except (FileNotFoundError, ModuleNotFoundError):
+        path = Path(__file__).resolve().parent.parent / "prompts" / _PROMPT_NAME
+        return path.read_text(encoding="utf-8")
 
 
 # Per-file and total content caps, so a huge PR can't blow the token budget.
@@ -130,17 +157,26 @@ class BedrockExecutor:
         if self._client is None:
             import boto3  # imported lazily; only needed for real invocation
 
-            self._client = boto3.client("bedrock-runtime", region_name=self.region)
+            session = boto3.Session(region_name=self.region)
+            if session.get_credentials() is None:
+                raise MissingCredentialsError(_NO_CREDS_MESSAGE)
+            self._client = session.client("bedrock-runtime")
         return self._client
 
     def _converse(self, user_message: str) -> str:
         """Call Bedrock `converse` and return the assistant text."""
-        response = self.client.converse(
-            modelId=self.model_id,
-            system=[{"text": self._system_prompt}],
-            messages=[{"role": "user", "content": [{"text": user_message}]}],
-            inferenceConfig={"temperature": 0.0, "maxTokens": 2048},
-        )
+        from botocore.exceptions import NoCredentialsError, PartialCredentialsError
+
+        try:
+            response = self.client.converse(
+                modelId=self.model_id,
+                system=[{"text": self._system_prompt}],
+                messages=[{"role": "user", "content": [{"text": user_message}]}],
+                inferenceConfig={"temperature": 0.0, "maxTokens": 2048},
+            )
+        except (NoCredentialsError, PartialCredentialsError) as exc:
+            # Authoritative call-time signal (e.g. creds resolved but incomplete).
+            raise MissingCredentialsError(_NO_CREDS_MESSAGE) from exc
         return response["output"]["message"]["content"][0]["text"]
 
     def generate(
