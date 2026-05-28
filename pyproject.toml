@@ -1,6 +1,6 @@
 [project]
 name = "pr-decorator"
-version = "0.1.0"
+version = "1.0.1"
 description = "Agentic system that decorates Pull/Merge Requests into a standardized MR report via AWS Bedrock (Amazon Nova Pro)."
 readme = "README.md"
 requires-python = ">=3.10"
