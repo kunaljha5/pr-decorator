@@ -1,0 +1,6 @@
+# Code owners for pr-decorator.
+# Order matters: the last matching pattern takes precedence.
+# These owners are requested for review on PRs touching matching files.
+
+# Default owner for everything in the repo.
+*       @kunaljha5
