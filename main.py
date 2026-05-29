@@ -22,32 +22,37 @@ from agent.execute import BedrockExecutor, MissingCredentialsError
 _OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 
 
-def _git_diff(rng: str, context_lines: int) -> str:
+def _run_git(args: list[str], *, check: bool = False) -> subprocess.CompletedProcess:
+    """Run a git command, capturing output decoded as UTF-8.
+
+    Git emits UTF-8, but `text=True` alone decodes with the platform locale
+    (cp1252 on Windows), which raises UnicodeDecodeError on the subprocess reader
+    thread for any non-Latin-1 byte — there it returns stdout=None and the caller
+    then trips on `None.strip()`. Forcing UTF-8 with `errors="replace"` makes the
+    CLI behave the same on Windows/Git Bash as on macOS/Linux.
+    """
     return subprocess.run(
-        ["git", "diff", f"--unified={context_lines}", rng],
+        ["git", *args],
         capture_output=True,
         text=True,
-        check=True,
-    ).stdout
+        encoding="utf-8",
+        errors="replace",
+        check=check,
+    )
+
+
+def _git_diff(rng: str, context_lines: int) -> str:
+    return _run_git(["diff", f"--unified={context_lines}", rng], check=True).stdout
 
 
 def _current_branch() -> str | None:
-    result = subprocess.run(
-        ["git", "branch", "--show-current"], capture_output=True, text=True, check=False
-    )
-    return result.stdout.strip() or None
+    return _run_git(["branch", "--show-current"]).stdout.strip() or None
 
 
 def _detect_base() -> str | None:
     """Pick a base ref to diff the current branch against, preferring remotes."""
     for ref in ("origin/main", "origin/master", "origin/develop", "main", "master", "develop"):
-        result = subprocess.run(
-            ["git", "rev-parse", "--verify", "--quiet", ref],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode == 0:
+        if _run_git(["rev-parse", "--verify", "--quiet", ref]).returncode == 0:
             return ref
     return None
 
@@ -58,7 +63,9 @@ def _read_diff(args: argparse.Namespace) -> str:
     if args.range:
         return _git_diff(args.range, args.context_lines)
     if not sys.stdin.isatty():
-        return sys.stdin.read()
+        # Read raw bytes and decode UTF-8 so a piped diff with non-Latin-1 bytes
+        # doesn't crash on the Windows locale codec (same reason as _run_git).
+        return sys.stdin.buffer.read().decode("utf-8", errors="replace")
 
     # Zero-arg default: decorate the current branch against its base branch.
     base = _detect_base()
@@ -78,12 +85,7 @@ def _read_diff(args: argparse.Namespace) -> str:
 def _git_commit_messages(rng: str | None) -> list[str]:
     if not rng:
         return []
-    result = subprocess.run(
-        ["git", "log", "--format=%s", rng],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    result = _run_git(["log", "--format=%s", rng])
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
@@ -122,10 +124,25 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _force_utf8_console() -> None:
+    """Print the report (which includes ✅/— in the summary table) as UTF-8.
+
+    On a legacy Windows console code page, printing those characters would raise
+    UnicodeEncodeError; `reconfigure` is a no-op where stdout is already UTF-8.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (ValueError, OSError):  # detached/non-reconfigurable stream
+                pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _force_utf8_console()
     args = build_parser().parse_args(argv)
     diff = _read_diff(args)
-    # print(diff)
 
     executor_kwargs = {}
     if args.region:
