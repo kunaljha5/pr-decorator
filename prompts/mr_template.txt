@@ -14,17 +14,26 @@ Return ONLY a JSON object (no prose, no code fences):
 
 {
 "title": "<imperative, concise title>",
+"risk_level": "<one of: HIGH | Medium | LOW — overall review/testing risk of this MR>",
 "sections": {
-"Purpose": "<why this MR exists — problem, goal, or motivation>",
+"Purpose": "<why this MR exists — problem, goal, or motivation (plain prose)>",
 "Ticket ID": "<linked issue id (e.g. JIRA-123) or empty string>",
-"Code Changes": "<how the system was modified (implementation, flow, structure)>",
-"Features Added": "<new externally visible capabilities, or empty string>",
-"Bug Fixes": "<what was broken, why, and how it was fixed, or empty string>",
-"Breaking Changes": "<backward-incompatible changes or empty string>",
-"Chores": "<non-functional changes (linting, formatting, config, deps), or empty string>",
-"Risks": "<realistic areas needing careful review/testing, or empty string>"
+"Code Changes": "<bullet list — how the system was modified (impl, flow, structure)>",
+"Features Added": "<bullet list of new externally visible capabilities, or empty string>",
+"Bug Fixes": "<bullet list — what was broken, why, and how it was fixed, or empty string>",
+"Breaking Changes": "<bullet list of backward-incompatible changes, or empty string>",
+"Chores": "<bullet list of non-functional changes (lint, format, config, deps), or empty string>",
+"Risks": "<bullet list of realistic areas needing careful review/testing, or empty string>"
 }
 }
+
+BULLET FORMAT (applies to Code Changes, Features Added, Bug Fixes, Breaking
+Changes, Chores, Risks — NOT Purpose or Ticket ID):
+
+* Return each of these sections as a list of bullet points, one per line.
+* Each bullet MUST be a single, specific point of AT MOST 80 characters.
+* Split distinct ideas into separate bullets instead of long sentences.
+* Purpose stays as 1–2 plain-prose sentences; Ticket ID is a bare id.
 
 ---
 
@@ -92,6 +101,14 @@ SECTION DEFINITIONS
   GOOD: "Incorrect branch detection could select the wrong diff base"
   BAD: "This may cause issues"
 
+* risk_level (top-level field, NOT a section)
+  Overall review/testing risk of the whole MR. Choose exactly one:
+    - HIGH   : backward-incompatible/breaking changes, schema or data
+               migrations, auth/security, or wide-blast-radius core logic
+    - Medium : non-trivial logic changes, bug fixes, new integrations,
+               detection rules, or template changes
+    - LOW    : docs, formatting/linting, comments, or isolated trivial edits
+
 ---
 
 WRITING RULES
@@ -101,9 +118,11 @@ WRITING RULES
 
 * Title should reflect BOTH action and scope.
 
-* NEVER list files or directories.
+* NEVER reference file names, paths, or directories in any bullet.
+  Describe behavior conceptually instead.
 
-* Be concise but specific (1–3 sentences per section).
+* Be concise but specific. Purpose = 1–3 sentences; all other sections are
+  bullet lists of short points (≤80 chars each), not paragraphs.
 
 * Base everything strictly on the provided code.
   DO NOT invent intent.

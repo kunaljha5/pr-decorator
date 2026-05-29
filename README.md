@@ -24,15 +24,27 @@ OBSERVE → PLAN → EXECUTE → OBSERVE → (if outcome OK) → FINISH & GENERA
 ## MR Output Template
 
 ```
-MR Title        : <concise, imperative-mood title>
-MR Description  :
-  Purpose       : <why this MR exists — business/technical reason>
-  Ticket ID     : <linked issue/ticket e.g. JIRA-123>
-  Code Changes  : <summary of what files/modules changed and how>
-  Features Added: <new capabilities introduced, if any>
-  Linting Fixed : <style/formatting/lint issues resolved, if any>
-  Bug Fixed     : <bugs resolved with brief description, if any>
+MR Title          : <concise, imperative-mood title>
+MR Description    :
+  Purpose         : <why this MR exists — business/technical reason>
+  Ticket ID       : <linked issue/ticket e.g. JIRA-123>
+  <summary table> : Feature | Bug Fix | Chore | Breaking | Risk(HIGH/Medium/LOW)
+  Code Changes    : <how the system was modified — implementation/flow/structure>
+  Features Added  : <new externally visible capabilities, if any>
+  Bug Fixes       : <bugs resolved with brief description, if any>
+  Breaking Changes: <backward-incompatible changes, if any>
+  Chores          : <linting/formatting/config/dependency updates, if any>
+  Risks           : <areas needing careful review/testing, if any>
 ```
+
+A compact summary table is rendered right after Purpose and Ticket ID — its
+Feature/Bug Fix/Chore/Breaking marks are derived from which sections are
+populated, and the Risk column shows the model's HIGH/Medium/LOW assessment.
+Optional sections that have no content (e.g. Features Added on a bug-fix-only
+MR) are **skipped** in the output rather than rendered empty.
+
+Every section except Purpose and Ticket ID is rendered as a **bullet list**,
+with each bullet hard-wrapped to **≤80 characters** so points stay scannable.
 
 ---
 
@@ -46,9 +58,9 @@ MR Description  :
 ### 2. Analysis & Planning (Plan Phase)
 - Parse the diff to classify changes:
   - New files → Features Added
-  - Modified logic → Code Changes or Bug Fixed
-  - Formatting/style-only changes → Linting Fixed
-  - Config/dependency changes → Code Changes
+  - Modified logic → Code Changes or Bug Fixes
+  - Formatting/style-only changes → Chores
+  - Config/dependency changes → Chores
 - Extract ticket ID from branch name or commit message (e.g. `feat/JIRA-123-...`)
 - Infer the purpose from commit messages and change patterns
 

@@ -9,7 +9,7 @@ Sections that fail are surfaced so the loop can re-plan/re-execute *only* them.
 
 from __future__ import annotations
 
-from .models import REQUIRED_SECTIONS, MRReport, ValidationResult
+from .models import OPTIONAL_SECTIONS, REQUIRED_SECTIONS, MRReport, ValidationResult
 
 # A small allow-list of imperative-mood opening verbs for MR titles.
 _IMPERATIVE_VERBS = frozenset(
@@ -32,9 +32,6 @@ _IMPERATIVE_VERBS = frozenset(
         "document",
     }
 )
-
-# Sections allowed to legitimately be empty (no such change in this PR).
-_OPTIONAL_WHEN_ABSENT = frozenset({"Features Added", "Linting Fixed", "Bug Fixed"})
 
 
 def _is_imperative(title: str) -> bool:
@@ -64,7 +61,7 @@ def validate(report: MRReport) -> ValidationResult:
         value = report.sections.get(section, "").strip()
         if value:
             continue
-        if section in _OPTIONAL_WHEN_ABSENT:
+        if section in OPTIONAL_SECTIONS:
             continue
         errors.append(f"Required section '{section}' is empty.")
         failed.append(section)

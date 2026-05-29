@@ -16,26 +16,44 @@ class ChangeCategory(str, Enum):
 
     Classification rules (from the spec):
       - new files            -> FEATURES_ADDED
-      - modified logic       -> CODE_CHANGES or BUG_FIXED
-      - formatting-only      -> LINTING_FIXED
-      - config/dependency    -> CODE_CHANGES
+      - modified logic       -> CODE_CHANGES or BUG_FIXES
+      - formatting-only      -> CHORES
+      - config/dependency    -> CHORES
+
+    These values MUST match the section keys in `prompts/mr_template.txt`.
     """
 
     CODE_CHANGES = "Code Changes"
     FEATURES_ADDED = "Features Added"
-    LINTING_FIXED = "Linting Fixed"
-    BUG_FIXED = "Bug Fixed"
+    CHORES = "Chores"
+    BUG_FIXES = "Bug Fixes"
 
 
 # The fixed set of sections every MR report must contain, in output order.
-# Purpose and Ticket ID are header fields; the rest come from ChangeCategory.
+# Purpose and Ticket ID are header fields; the rest mirror the JSON section keys
+# defined in `prompts/mr_template.txt` — keep these two in sync.
 REQUIRED_SECTIONS: tuple[str, ...] = (
     "Purpose",
     "Ticket ID",
-    ChangeCategory.CODE_CHANGES.value,
-    ChangeCategory.FEATURES_ADDED.value,
-    ChangeCategory.LINTING_FIXED.value,
-    ChangeCategory.BUG_FIXED.value,
+    "Code Changes",
+    "Features Added",
+    "Bug Fixes",
+    "Breaking Changes",
+    "Chores",
+    "Risks",
+)
+
+# Sections allowed to be empty (no such change in this PR). Purpose and Code
+# Changes are always required; Ticket ID is warn-only. Shared by render (skip
+# empty blocks) and validate (don't error on absence) so the two never drift.
+OPTIONAL_SECTIONS: frozenset[str] = frozenset(
+    {
+        "Features Added",
+        "Bug Fixes",
+        "Breaking Changes",
+        "Chores",
+        "Risks",
+    }
 )
 
 
@@ -84,6 +102,9 @@ class MRReport:
 
     title: str = ""
     sections: dict[str, str] = field(default_factory=dict)
+    # Overall review/testing risk the model assigned: "HIGH" | "Medium" | "LOW"
+    # (empty if the model didn't return one — render derives a fallback).
+    risk_level: str = ""
 
 
 @dataclass

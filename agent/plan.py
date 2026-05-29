@@ -46,11 +46,11 @@ def classify(change: FileChange, observation: Observation) -> ChangeCategory:
     if change.is_new:
         return ChangeCategory.FEATURES_ADDED
     if any(hint in change.path for hint in _CONFIG_HINTS):
-        return ChangeCategory.CODE_CHANGES
+        return ChangeCategory.CHORES
     if _is_formatting_only(change):
-        return ChangeCategory.LINTING_FIXED
+        return ChangeCategory.CHORES
     if _looks_like_bugfix(observation):
-        return ChangeCategory.BUG_FIXED
+        return ChangeCategory.BUG_FIXES
     return ChangeCategory.CODE_CHANGES
 
 

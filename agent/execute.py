@@ -12,7 +12,7 @@ import json
 import os
 from importlib.resources import files
 from pathlib import Path
-
+from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 from .models import MRReport, Observation, Plan
 
 _DEFAULT_REGION = os.getenv("BEDROCK_REGION") or os.getenv("AWS_REGION") or "ap-south-1"
@@ -165,7 +165,6 @@ class BedrockExecutor:
 
     def _converse(self, user_message: str) -> str:
         """Call Bedrock `converse` and return the assistant text."""
-        from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 
         try:
             response = self.client.converse(
@@ -196,6 +195,20 @@ class BedrockExecutor:
         return _parse_report(raw)
 
 
+def _coerce_section(value) -> str:
+    """Normalize a section value to a string.
+
+    The model is asked to return bullet lists, so it may emit either a string
+    (newline-separated bullets) or a JSON array of points. Arrays are joined
+    one-per-line; rendering re-formats either form into wrapped bullets.
+    """
+    if isinstance(value, list):
+        # Prefix "- " so each array item is preserved as one bullet — rendering
+        # won't re-split a single item on its internal punctuation.
+        return "\n".join(f"- {str(item).strip()}" for item in value if str(item).strip())
+    return value if isinstance(value, str) else str(value)
+
+
 def _parse_report(raw: str) -> MRReport:
     """Parse the model's JSON response into an `MRReport`.
 
@@ -206,4 +219,11 @@ def _parse_report(raw: str) -> MRReport:
         text = text.strip("`")
         text = text[text.find("{") : text.rfind("}") + 1]
     data = json.loads(text)
-    return MRReport(title=data.get("title", ""), sections=data.get("sections", {}))
+    sections = data.get("sections", {})
+    if not isinstance(sections, dict):
+        sections = {}
+    return MRReport(
+        title=data.get("title", ""),
+        sections={k: _coerce_section(v) for k, v in sections.items()},
+        risk_level=data.get("risk_level", ""),
+    )

@@ -24,13 +24,16 @@ The loop is the core. Each phase is a module under `agent/`, wired together by `
   `MRReport`, `ValidationResult`, `AgentTrace`, `FileChange`) and the `ChangeCategory` enum.
   **Read this first** — every phase imports types from here, never from each other, which is
   what keeps the phases decoupled and avoids circular imports. `REQUIRED_SECTIONS` defines the
-  fixed output sections (Purpose, Ticket ID, Code Changes, Features Added, Linting Fixed, Bug Fixed).
+  fixed output sections (Purpose, Ticket ID, Code Changes, Features Added, Bug Fixes, Breaking
+  Changes, Chores, Risks) and **must stay in sync with the JSON keys in `prompts/mr_template.txt`**;
+  `OPTIONAL_SECTIONS` is the shared set that may be empty (skipped on render, not flagged on
+  validate). `MRReport.risk_level` ("HIGH"|"Medium"|"LOW") is a top-level field the model returns.
 - **`agent/observe.py`** — lightweight diff parsing (not a full unified-diff parser) into
   `FileChange` records (keeps the *whole* per-file patch body, not just changed lines), plus
   ticket-id extraction via regex from branch/commits.
 - **`agent/plan.py`** — heuristic classification of each `FileChange` into an MR section
-  (new file → Features Added; config/deps → Code Changes; near-symmetric add/remove →
-  Linting Fixed; fix/bug keywords in commits → Bug Fixed; else Code Changes). These are only
+  (new file → Features Added; config/deps and near-symmetric add/remove → Chores; fix/bug
+  keywords in commits → Bug Fixes; else Code Changes). These are only
   *hints* fed to the LLM — the model re-judges intent from actual code content.
 - **`agent/execute.py`** — `BedrockExecutor` wraps the `bedrock-runtime` client and calls the
   `converse` API. Builds the user prompt from the plan + full file content, parses the model's
@@ -40,7 +43,14 @@ The loop is the core. Each phase is a module under `agent/`, wired together by `
 - **`agent/validate.py`** — the second OBSERVE: checks required sections are populated, title is
   imperative mood, ticket id present (warn-only). Returns `failed_sections` so the loop can
   re-execute **only** those.
-- **`agent/render.py`** — FINISH: renders `MRReport` to Markdown (MR body) or JSON.
+- **`agent/render.py`** — FINISH: renders `MRReport` to Markdown (MR body) or JSON. The Markdown
+  has a compact summary table right after Purpose/Ticket ID (Feature/Bug Fix/Chore/Breaking marks
+  derived from which sections are populated, plus the risk level) and ends every block with `---`.
+  Empty optional sections are skipped. `_risk_level()` falls back to a heuristic (Breaking → HIGH,
+  Bug Fix/Risks → Medium, else LOW) when the model omits `risk_level`. Body sections in
+  `_LIST_SECTIONS` (everything except Purpose/Ticket ID) render as Markdown bullet lists, each
+  line hard-wrapped to ≤80 chars via `_format_bullets`/`_as_bullets` — robust to whatever bullet
+  style (or prose blob) the model returns.
 
 ### Control-flow rules baked into `loop.py` (don't break these)
 
