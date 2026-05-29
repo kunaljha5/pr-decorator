@@ -16,7 +16,7 @@ from . import validate as validate_phase
 from .execute import BedrockExecutor, MissingCredentialsError
 from .models import AgentTrace, MRReport, ValidationResult
 
-MAX_RETRIES = 2
+MAX_RETRIES = 4
 
 
 @dataclass

@@ -4,7 +4,7 @@ Merge Request description from a code diff.
 You are given changed files WITH CONTENT. Read the code carefully, infer WHAT
 changed and WHY, and produce a concise, accurate summary.
 
-You MUST strictly follow the output contract below.
+You MUST strictly follow the output contract and rules below.
 
 ---
 
@@ -22,53 +22,75 @@ Return ONLY a JSON object (no prose, no code fences):
 "Bug Fixes": "<what was broken, why, and how it was fixed, or empty string>",
 "Breaking Changes": "<backward-incompatible changes or empty string>",
 "Chores": "<non-functional changes (linting, formatting, config, deps), or empty string>",
-"Risks": "<areas needing careful review/testing, or empty string>"
+"Risks": "<realistic areas needing careful review/testing, or empty string>"
 }
 }
 
 ---
 
-SECTION DEFINITIONS (MANDATORY DISTINCTIONS)
+CRITICAL RULES (HIGH PRIORITY)
+
+* Avoid generic language:
+  BAD: "updated logic", "improved system", "enhanced structure"
+  GOOD: "extended base branch detection to include develop and origin/develop with fallback priority"
+
+* "Code Changes" MUST include at least one concrete detail:
+
+  * condition or branching logic
+  * fallback or priority mechanism
+  * data flow or transformation
+  * structural/architectural change
+
+* STRICT SEPARATION:
+
+  * Code Changes = HOW (implementation)
+  * Features Added = WHAT (externally visible behavior)
+
+* Each section must provide UNIQUE information.
+  Do NOT repeat the same idea across sections.
+
+* "Risks" MUST be populated if the change is non-trivial:
+  (e.g., logic changes, detection rules, templates, integrations)
+
+---
+
+SECTION DEFINITIONS
 
 * Purpose
-  The motivation behind the change. Explain the problem or goal — NOT a
-  restatement of the title.
+  WHY the change exists. Describe the problem or goal.
+  Do NOT include implementation details.
 
 * Code Changes
-  Describe HOW the system changed:
+  HOW the system was modified:
 
-  * architecture, control flow, logic, data handling
-  * refactors, restructuring, internal behavior
-    DO NOT describe outcomes or user-facing features here.
+  * control flow, logic, structure, data handling
+  * internal behavior changes only
 
 * Features Added
-  Describe WHAT new capabilities exist from a user/developer perspective.
-  Only include externally observable behavior.
+  WHAT new capabilities are visible to users/developers.
+  Only include externally observable outcomes.
 
 * Bug Fixes
   Must include:
 
   * what was broken
   * root cause (if inferable)
-  * how it was fixed (briefly)
+  * how it was fixed
 
 * Breaking Changes
-  Any backward-incompatible behavior, API changes, schema changes, or removals.
+  Any backward-incompatible changes (APIs, schemas, behavior).
 
 * Chores
   Non-functional updates:
 
   * linting, formatting, renaming
-  * config changes, dependency updates
-  * IDE/editor/project scaffolding
+  * config or dependency updates
+  * tooling or scaffolding
 
 * Risks
-  Highlight:
-
-  * complex or sensitive logic
-  * areas lacking tests
-  * potential regressions
-  * integrations/external dependencies
+  Must describe a realistic concern:
+  GOOD: "Incorrect branch detection could select the wrong diff base"
+  BAD: "This may cause issues"
 
 ---
 
@@ -77,22 +99,16 @@ WRITING RULES
 * Title MUST start with an imperative verb:
   (Add, Fix, Refactor, Update, Introduce, Implement, Remove, Improve)
 
+* Title should reflect BOTH action and scope.
+
 * NEVER list files or directories.
-  BAD: "Updated a.py, b.py, c.py"
-  GOOD: "Refactored request validation into a shared middleware"
-
-* DO NOT repeat the same idea across sections.
-  Each section must add unique information.
-
-* Collapse low-value noise:
-  lockfiles, .gitignore, IDE configs → mention once or omit entirely.
 
 * Be concise but specific (1–3 sentences per section).
 
 * Base everything strictly on the provided code.
-  DO NOT invent intent or features.
+  DO NOT invent intent.
 
-* If a section has no content, return "" (empty string).
+* If a section has no content, return "".
 
 ---
 
@@ -101,26 +117,42 @@ EDGE CASE HANDLING
 * Pure refactor:
 
   * Features Added = ""
-  * Purpose should reflect maintainability or performance improvement
+  * Purpose = maintainability/performance improvement
 
 * New module/package:
 
-  * Describe it holistically (what it does), not as a file list
+  * Describe it holistically (what it does)
 
 * Mixed changes:
 
-  * Separate clearly across sections (don’t merge features + fixes)
+  * Clearly separate features, fixes, and refactors
 
 ---
 
-QUALITY BAR
+FAIL CONDITIONS (MUST AVOID)
 
-A strong output should allow a reviewer to understand:
+The output is INVALID if:
 
-* Why this change exists
-* What actually changed internally
-* What users/developers will experience differently
-* What could break or needs careful review
+* Any section contains vague phrases without specifics
+* "Code Changes" lacks concrete technical detail
+* The same idea appears in multiple sections
+* "Risks" is empty for non-trivial changes
+* The description could apply to an unrelated PR
+
+If any of the above occur, rewrite the output.
+
+---
+
+FINAL CHECK (REQUIRED)
+
+Before returning:
+
+* Can a reviewer understand WHAT changed without reading the diff?
+* Does "Code Changes" describe real logic or structure?
+* Does "Risks" highlight a believable issue?
+* Are all sections precise and non-overlapping?
+
+If not, refine the output.
 
 ---
 

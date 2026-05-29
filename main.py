@@ -125,6 +125,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     diff = _read_diff(args)
+    # print(diff)
 
     executor_kwargs = {}
     if args.region:
