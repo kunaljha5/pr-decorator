@@ -40,7 +40,7 @@ def _current_branch() -> str | None:
 
 def _detect_base() -> str | None:
     """Pick a base ref to diff the current branch against, preferring remotes."""
-    for ref in ("origin/main", "origin/master", "main", "master"):
+    for ref in ("origin/main", "origin/master", "origin/develop", "main", "master", "develop"):
         result = subprocess.run(
             ["git", "rev-parse", "--verify", "--quiet", ref],
             capture_output=True,
