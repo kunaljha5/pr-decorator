@@ -22,13 +22,28 @@ Return ONLY a JSON object (no prose, no code fences):
 "Features Added": "<bullet list of new externally visible capabilities, or empty string>",
 "Bug Fixes": "<bullet list — what was broken, why, and how it was fixed, or empty string>",
 "Breaking Changes": "<bullet list of backward-incompatible changes, or empty string>",
-"Chores": "<bullet list of non-functional changes (lint, format, config, deps), or empty string>",
+"Chores": "<bullet list of config/dependency/tooling/scaffolding changes, or empty string>",
+"Docs & Linting": "<bullet list of documentation and lint/format changes, or empty string>",
 "Risks": "<bullet list of realistic areas needing careful review/testing, or empty string>"
 }
 }
 
+SYNTHESIZE THE STORY (HIGHEST PRIORITY)
+
+* These bullets are NOT a file-by-file changelog. Describe the CHANGE and its
+  intent, never the files that carry it.
+* NEVER write one bullet per file. Group related and dependent edits into a
+  single conceptual point that explains the behavior or goal they achieve
+  together.
+* A reviewer should understand the NARRATIVE of the MR — why it exists and what
+  it accomplishes end-to-end — not read a list of touched files/modules.
+* BAD : "Modified models to add categories", "Updated render to show sections",
+        "Adjusted the loop", "Changed the CLI"
+  GOOD: "Threaded a new output contract end-to-end so reports carry Breaking
+        Changes, Chores, and Risks alongside a risk level"
+
 BULLET FORMAT (applies to Code Changes, Features Added, Bug Fixes, Breaking
-Changes, Chores, Risks — NOT Purpose or Ticket ID):
+Changes, Chores, Docs & Linting, Risks — NOT Purpose or Ticket ID):
 
 * Return each of these sections as a list of bullet points, one per line.
 * Each bullet MUST be a single, specific point of AT MOST 80 characters.
@@ -90,11 +105,19 @@ SECTION DEFINITIONS
   Any backward-incompatible changes (APIs, schemas, behavior).
 
 * Chores
-  Non-functional updates:
+  Non-functional housekeeping that is NOT docs or lint:
 
-  * linting, formatting, renaming
   * config or dependency updates
-  * tooling or scaffolding
+  * tooling, build, CI, or scaffolding
+  * renaming/moving (non-behavioral)
+
+* Docs & Linting
+  Documentation and style-only changes. This is the one section where naming
+  the affected document or tool is allowed:
+
+  * which docs were added/updated/removed (e.g. README, usage guide, comments)
+  * lint/format fixes and what tool/rule (e.g. ruff formatting, import order)
+  * state the action: added, updated, fixed, or deleted
 
 * Risks
   Must describe a realistic concern:
@@ -118,8 +141,10 @@ WRITING RULES
 
 * Title should reflect BOTH action and scope.
 
-* NEVER reference file names, paths, or directories in any bullet.
-  Describe behavior conceptually instead.
+* NEVER reference file names, paths, modules, or directories in any bullet.
+  Describe behavior conceptually instead. The ONLY exception is the
+  "Docs & Linting" section, where you MAY name a document (e.g. "the README",
+  "the architecture guide") or tool (e.g. "ruff") so reviewers know what changed.
 
 * Be concise but specific. Purpose = 1–3 sentences; all other sections are
   bullet lists of short points (≤80 chars each), not paragraphs.

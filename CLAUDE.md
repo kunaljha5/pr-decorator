@@ -25,16 +25,19 @@ The loop is the core. Each phase is a module under `agent/`, wired together by `
   **Read this first** — every phase imports types from here, never from each other, which is
   what keeps the phases decoupled and avoids circular imports. `REQUIRED_SECTIONS` defines the
   fixed output sections (Purpose, Ticket ID, Code Changes, Features Added, Bug Fixes, Breaking
-  Changes, Chores, Risks) and **must stay in sync with the JSON keys in `prompts/mr_template.txt`**;
+  Changes, Chores, Docs & Linting, Risks) and **must stay in sync with the JSON keys in
+  `prompts/mr_template.txt`**;
   `OPTIONAL_SECTIONS` is the shared set that may be empty (skipped on render, not flagged on
   validate). `MRReport.risk_level` ("HIGH"|"Medium"|"LOW") is a top-level field the model returns.
 - **`agent/observe.py`** — lightweight diff parsing (not a full unified-diff parser) into
   `FileChange` records (keeps the *whole* per-file patch body, not just changed lines), plus
   ticket-id extraction via regex from branch/commits.
 - **`agent/plan.py`** — heuristic classification of each `FileChange` into an MR section
-  (new file → Features Added; config/deps and near-symmetric add/remove → Chores; fix/bug
-  keywords in commits → Bug Fixes; else Code Changes). These are only
-  *hints* fed to the LLM — the model re-judges intent from actual code content.
+  (docs/`.md` and near-symmetric add/remove → Docs & Linting; config/deps → Chores; new file →
+  Features Added; fix/bug keywords in commits → Bug Fixes; else Code Changes). These are only
+  *hints* fed to the LLM — the model re-judges intent from actual code content. The system prompt
+  tells the model to **synthesize the story** (group dependent changes, never list file names or
+  one-bullet-per-file); `execute.py` frames file contents as "evidence", not the answer's skeleton.
 - **`agent/execute.py`** — `BedrockExecutor` wraps the `bedrock-runtime` client and calls the
   `converse` API. Builds the user prompt from the plan + full file content, parses the model's
   JSON response into an `MRReport`. The boto3 client is created **lazily** so the loop and tests

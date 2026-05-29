@@ -17,7 +17,7 @@ class ChangeCategory(str, Enum):
     Classification rules (from the spec):
       - new files            -> FEATURES_ADDED
       - modified logic       -> CODE_CHANGES or BUG_FIXES
-      - formatting-only      -> CHORES
+      - docs / formatting    -> DOCS_LINTING
       - config/dependency    -> CHORES
 
     These values MUST match the section keys in `prompts/mr_template.txt`.
@@ -26,6 +26,7 @@ class ChangeCategory(str, Enum):
     CODE_CHANGES = "Code Changes"
     FEATURES_ADDED = "Features Added"
     CHORES = "Chores"
+    DOCS_LINTING = "Docs & Linting"
     BUG_FIXES = "Bug Fixes"
 
 
@@ -40,6 +41,7 @@ REQUIRED_SECTIONS: tuple[str, ...] = (
     "Bug Fixes",
     "Breaking Changes",
     "Chores",
+    "Docs & Linting",
     "Risks",
 )
 
@@ -52,6 +54,7 @@ OPTIONAL_SECTIONS: frozenset[str] = frozenset(
         "Bug Fixes",
         "Breaking Changes",
         "Chores",
+        "Docs & Linting",
         "Risks",
     }
 )

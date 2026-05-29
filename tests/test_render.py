@@ -91,6 +91,37 @@ def test_existing_bullet_markers_are_normalized():
     assert "* star one" not in md
 
 
+def test_docs_and_linting_section_renders_as_bullets():
+    md = to_markdown(
+        _report(
+            Purpose="why",
+            **{
+                "Ticket ID": "T-1",
+                "Code Changes": "how",
+                "Docs & Linting": "- Updated README\n- Applied ruff formatting",
+            },
+        )
+    )
+    assert "**Docs & Linting**" in md
+    assert "- Updated README" in md
+    assert "- Applied ruff formatting" in md
+
+
+def test_chore_column_reflects_docs_and_linting():
+    md_chore = to_markdown(
+        _report(Purpose="p", **{"Ticket ID": "T", "Code Changes": "c", "Chores": "bumped"})
+    )
+    md_docs = to_markdown(
+        _report(Purpose="p", **{"Ticket ID": "T", "Code Changes": "c", "Docs & Linting": "readme"})
+    )
+    # Both populate the single "Chore" column in the summary table.
+    row_chore = [ln for ln in md_chore.splitlines() if ln.startswith("| ") and "✅" in ln][-1]
+    row_docs = [ln for ln in md_docs.splitlines() if ln.startswith("| ") and "✅" in ln][-1]
+    # Chore column is the 3rd cell.
+    assert row_chore.split("|")[3].strip() == "✅"
+    assert row_docs.split("|")[3].strip() == "✅"
+
+
 def test_long_bullets_wrap_to_80_chars():
     long_point = "Reordered base detection to try origin/develop before develop " * 3
     md = to_markdown(

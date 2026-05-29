@@ -33,7 +33,8 @@ MR Description    :
   Features Added  : <new externally visible capabilities, if any>
   Bug Fixes       : <bugs resolved with brief description, if any>
   Breaking Changes: <backward-incompatible changes, if any>
-  Chores          : <linting/formatting/config/dependency updates, if any>
+  Chores          : <config/dependency/tooling/scaffolding updates, if any>
+  Docs & Linting  : <which docs/lint updated, fixed, added, or deleted, if any>
   Risks           : <areas needing careful review/testing, if any>
 ```
 
@@ -45,6 +46,10 @@ MR) are **skipped** in the output rather than rendered empty.
 
 Every section except Purpose and Ticket ID is rendered as a **bullet list**,
 with each bullet hard-wrapped to **≤80 characters** so points stay scannable.
+The agent is instructed to **synthesize the story** — grouping dependent changes
+into conceptual points rather than listing files — and to **never name files or
+paths**, except in **Docs & Linting**, where naming which docs/lint changed is
+the whole point.
 
 ---
 
@@ -57,10 +62,10 @@ with each bullet hard-wrapped to **≤80 characters** so points stay scannable.
 
 ### 2. Analysis & Planning (Plan Phase)
 - Parse the diff to classify changes:
+  - Docs (`.md`/README/etc.) and formatting/style-only changes → Docs & Linting
+  - Config/dependency/tooling changes → Chores
   - New files → Features Added
   - Modified logic → Code Changes or Bug Fixes
-  - Formatting/style-only changes → Chores
-  - Config/dependency changes → Chores
 - Extract ticket ID from branch name or commit message (e.g. `feat/JIRA-123-...`)
 - Infer the purpose from commit messages and change patterns
 

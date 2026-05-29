@@ -97,8 +97,12 @@ def _build_user_message(observation: Observation, plan: Plan, only_section: str 
     """Render the planned facts into a single user-turn prompt for Bedrock."""
     lines = [
         "Decorate the following Pull Request into the MR template.",
-        "Read the ACTUAL CODE below and infer what the author is trying to do and",
-        "why. Summarize intent — do NOT just list file names.",
+        "Read the ACTUAL CODE below as EVIDENCE — it is NOT the structure of your",
+        "answer. Infer the single coherent story: what is the author trying to",
+        "achieve and why, and how do these changes depend on each other.",
+        "Group related edits into conceptual points. Do NOT enumerate files or",
+        "write one bullet per file; do NOT mention file names or paths (except in",
+        "the 'Docs & Linting' section).",
         "",
     ]
     lines.append(f"Branch: {observation.branch or '(none)'}")
@@ -121,7 +125,8 @@ def _build_user_message(observation: Observation, plan: Plan, only_section: str 
     for section, items in plan.sections.items():
         lines.append(f"  {section}: {len(items)} file(s)")
     lines.append("")
-    lines.append("Changed files with their content:")
+    lines.append("Evidence — changed files with their content (for understanding")
+    lines.append("only; synthesize intent, do NOT echo these names back):")
     lines.append("")
     lines.append(_render_files(observation))
     if only_section:

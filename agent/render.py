@@ -17,7 +17,15 @@ _RISK_LABELS = {"high": "HIGH", "medium": "Medium", "low": "LOW"}
 
 # Body sections rendered as bullet lists (Purpose/Ticket ID stay as prose).
 _LIST_SECTIONS = frozenset(
-    {"Code Changes", "Features Added", "Bug Fixes", "Breaking Changes", "Chores", "Risks"}
+    {
+        "Code Changes",
+        "Features Added",
+        "Bug Fixes",
+        "Breaking Changes",
+        "Chores",
+        "Docs & Linting",
+        "Risks",
+    }
 )
 # Each rendered bullet line (including the "- " marker) is wrapped to this width.
 _BULLET_WIDTH = 80
@@ -84,14 +92,15 @@ def _summary_table(report: MRReport) -> list[str]:
     so the table can never disagree with the sections rendered below it.
     """
 
-    def mark(section: str) -> str:
-        return "✅" if report.sections.get(section, "").strip() else "—"
+    def mark(*sections: str) -> str:
+        return "✅" if any(report.sections.get(s, "").strip() for s in sections) else "—"
 
+    # The "Chore" column covers both housekeeping and doc/lint changes.
     return [
         "| Feature | Bug Fix | Chore | Breaking | Risk |",
         "|---------|---------|-------|----------|------|",
-        f"| {mark('Features Added')} | {mark('Bug Fixes')} | {mark('Chores')} | "
-        f"{mark('Breaking Changes')} | {_risk_level(report)} |",
+        f"| {mark('Features Added')} | {mark('Bug Fixes')} | "
+        f"{mark('Chores', 'Docs & Linting')} | {mark('Breaking Changes')} | {_risk_level(report)} |",
     ]
 
 
