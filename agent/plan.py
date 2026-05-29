@@ -25,6 +25,21 @@ _CONFIG_HINTS = (
     ".cfg",
 )
 
+# Extensions/paths treated as documentation (routed to Docs & Linting).
+_DOC_HINTS = (
+    ".md",
+    ".rst",
+    ".adoc",
+    "docs/",
+    "README",
+    "CHANGELOG",
+    "LICENSE",
+)
+
+
+def _is_doc(change: FileChange) -> bool:
+    return any(hint in change.path for hint in _DOC_HINTS)
+
 
 def _looks_like_bugfix(observation: Observation) -> bool:
     """Heuristic: do the commit messages/branch signal a bug fix?"""
@@ -43,14 +58,16 @@ def _is_formatting_only(change: FileChange) -> bool:
 
 def classify(change: FileChange, observation: Observation) -> ChangeCategory:
     """Map a single file change to its MR template section."""
+    if _is_doc(change):
+        return ChangeCategory.DOCS_LINTING
+    if any(hint in change.path for hint in _CONFIG_HINTS):
+        return ChangeCategory.CHORES
     if change.is_new:
         return ChangeCategory.FEATURES_ADDED
-    if any(hint in change.path for hint in _CONFIG_HINTS):
-        return ChangeCategory.CODE_CHANGES
     if _is_formatting_only(change):
-        return ChangeCategory.LINTING_FIXED
+        return ChangeCategory.DOCS_LINTING
     if _looks_like_bugfix(observation):
-        return ChangeCategory.BUG_FIXED
+        return ChangeCategory.BUG_FIXES
     return ChangeCategory.CODE_CHANGES
 
 

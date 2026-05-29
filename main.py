@@ -40,7 +40,7 @@ def _current_branch() -> str | None:
 
 def _detect_base() -> str | None:
     """Pick a base ref to diff the current branch against, preferring remotes."""
-    for ref in ("origin/main", "origin/master", "main", "master"):
+    for ref in ("origin/main", "origin/master", "origin/develop", "main", "master", "develop"):
         result = subprocess.run(
             ["git", "rev-parse", "--verify", "--quiet", ref],
             capture_output=True,
@@ -125,6 +125,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     diff = _read_diff(args)
+    # print(diff)
 
     executor_kwargs = {}
     if args.region:

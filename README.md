@@ -24,15 +24,33 @@ OBSERVE → PLAN → EXECUTE → OBSERVE → (if outcome OK) → FINISH & GENERA
 ## MR Output Template
 
 ```
-MR Title        : <concise, imperative-mood title>
-MR Description  :
-  Purpose       : <why this MR exists — business/technical reason>
-  Ticket ID     : <linked issue/ticket e.g. JIRA-123>
-  Code Changes  : <summary of what files/modules changed and how>
-  Features Added: <new capabilities introduced, if any>
-  Linting Fixed : <style/formatting/lint issues resolved, if any>
-  Bug Fixed     : <bugs resolved with brief description, if any>
+MR Title          : <concise, imperative-mood title>
+MR Description    :
+  Purpose         : <why this MR exists — business/technical reason>
+  <summary table> : Ticket | Feature | Bug Fix | Chore | Breaking | Risk(HIGH/Medium/LOW)
+  Code Changes    : <how the system was modified — implementation/flow/structure>
+  Features Added  : <new externally visible capabilities, if any>
+  Bug Fixes       : <bugs resolved with brief description, if any>
+  Breaking Changes: <backward-incompatible changes, if any>
+  Chores          : <config/dependency/tooling/scaffolding updates, if any>
+  Docs & Linting  : <which docs/lint updated, fixed, added, or deleted, if any>
+  Risks           : <areas needing careful review/testing, if any>
 ```
+
+A compact summary table is rendered right after Purpose. Its **first column is
+the linked Ticket ID** (`—` if none); the Feature/Bug Fix/Chore/Breaking marks
+are derived from which sections are populated, and the Risk column shows the
+model's HIGH/Medium/LOW assessment. The Ticket ID is presented in this table
+only — not as its own block. Optional sections that have no content (e.g.
+Features Added on a bug-fix-only MR) are **skipped** in the output rather than
+rendered empty.
+
+Every section except Purpose and Ticket ID is rendered as a **bullet list**,
+with each bullet hard-wrapped to **≤80 characters** so points stay scannable.
+The agent is instructed to **synthesize the story** — grouping dependent changes
+into conceptual points rather than listing files — and to **never name files or
+paths**, except in **Docs & Linting**, where naming which docs/lint changed is
+the whole point.
 
 ---
 
@@ -45,10 +63,10 @@ MR Description  :
 
 ### 2. Analysis & Planning (Plan Phase)
 - Parse the diff to classify changes:
+  - Docs (`.md`/README/etc.) and formatting/style-only changes → Docs & Linting
+  - Config/dependency/tooling changes → Chores
   - New files → Features Added
-  - Modified logic → Code Changes or Bug Fixed
-  - Formatting/style-only changes → Linting Fixed
-  - Config/dependency changes → Code Changes
+  - Modified logic → Code Changes or Bug Fixes
 - Extract ticket ID from branch name or commit message (e.g. `feat/JIRA-123-...`)
 - Infer the purpose from commit messages and change patterns
 
@@ -172,8 +190,9 @@ python -c "import boto3; print(boto3.client('sts', region_name='ap-south-1').get
 Run `pr-decorator` from inside the git repository whose changes you want to decorate:
 
 ```bash
-# Zero-arg: auto-detect base (origin/main → main → master), diff the current
-# branch against it, and auto-fill branch + commit messages. Just run:
+# Zero-arg: auto-detect base (origin/main → origin/master → origin/develop →
+# main → master → develop), diff the current branch against it, and auto-fill
+# branch + commit messages. Just run:
 pr-decorator
 
 # Override the range / branch / ticket explicitly:

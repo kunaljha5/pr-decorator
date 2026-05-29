@@ -24,31 +24,58 @@ The loop is the core. Each phase is a module under `agent/`, wired together by `
   `MRReport`, `ValidationResult`, `AgentTrace`, `FileChange`) and the `ChangeCategory` enum.
   **Read this first** — every phase imports types from here, never from each other, which is
   what keeps the phases decoupled and avoids circular imports. `REQUIRED_SECTIONS` defines the
-  fixed output sections (Purpose, Ticket ID, Code Changes, Features Added, Linting Fixed, Bug Fixed).
+  fixed output sections (Purpose, Ticket ID, Code Changes, Features Added, Bug Fixes, Breaking
+  Changes, Chores, Docs & Linting, Risks) and **must stay in sync with the JSON keys in
+  `prompts/mr_template.txt`**;
+  `OPTIONAL_SECTIONS` is the shared set that may be empty (skipped on render, not flagged on
+  validate). `LIST_SECTIONS` (sections rendered as bullet lists) and `FILENAME_ALLOWED_SECTIONS`
+  (just Docs & Linting) live here too as the **single source of truth** shared by render and
+  validate, so the bulletizing and the no-file-names guardrail can't drift apart.
+  `MRReport.risk_level` ("HIGH"|"Medium"|"LOW") is a top-level field the model returns.
 - **`agent/observe.py`** — lightweight diff parsing (not a full unified-diff parser) into
   `FileChange` records (keeps the *whole* per-file patch body, not just changed lines), plus
   ticket-id extraction via regex from branch/commits.
 - **`agent/plan.py`** — heuristic classification of each `FileChange` into an MR section
-  (new file → Features Added; config/deps → Code Changes; near-symmetric add/remove →
-  Linting Fixed; fix/bug keywords in commits → Bug Fixed; else Code Changes). These are only
-  *hints* fed to the LLM — the model re-judges intent from actual code content.
+  (docs/`.md` and near-symmetric add/remove → Docs & Linting; config/deps → Chores; new file →
+  Features Added; fix/bug keywords in commits → Bug Fixes; else Code Changes). These are only
+  *hints* fed to the LLM — the model re-judges intent from actual code content. The system prompt
+  tells the model to **synthesize the story** (group dependent changes, never list file names or
+  one-bullet-per-file); `execute.py` frames file contents as "evidence", not the answer's skeleton.
 - **`agent/execute.py`** — `BedrockExecutor` wraps the `bedrock-runtime` client and calls the
   `converse` API. Builds the user prompt from the plan + full file content, parses the model's
   JSON response into an `MRReport`. The boto3 client is created **lazily** so the loop and tests
   run without AWS creds. System prompt is loaded from `prompts/mr_template.txt` (as packaged
   data, with a source-checkout fallback).
 - **`agent/validate.py`** — the second OBSERVE: checks required sections are populated, title is
-  imperative mood, ticket id present (warn-only). Returns `failed_sections` so the loop can
-  re-execute **only** those.
-- **`agent/render.py`** — FINISH: renders `MRReport` to Markdown (MR body) or JSON.
+  imperative mood, ticket id present (warn-only), and that list sections don't leak file
+  names/paths. A leak is a **warning, not an error** (it never flips the exit code — that still
+  means "a required section is empty"), but it **does** add the section to `failed_sections` *and*
+  a `section_feedback[section]` reason, so the loop re-executes it with corrective feedback. Docs &
+  Linting is special-cased: it **may** name a document or tool (e.g. "the README", "ruff") but is
+  still flagged for raw **source/test** paths (`.py`, `test_*.py`, etc.) — those belong in
+  Chores/Code Changes. Returns `failed_sections` so the loop can re-execute **only** those.
+- **`agent/render.py`** — FINISH: renders `MRReport` to Markdown (MR body) or JSON. The Markdown
+  has a compact summary table right after Purpose whose **first column is the Ticket ID**, followed
+  by Feature/Bug Fix/Chore/Breaking marks (derived from which sections are populated) and the risk
+  level; it ends every block with `---`. Ticket ID is shown only in that table, **not** as its own
+  block (missing ticket → `—`). Empty optional sections are skipped. `_risk_level()` falls back to
+  a heuristic (Breaking → HIGH, Bug Fix/Risks → Medium, else LOW) when the model omits `risk_level`.
+  Body sections in `LIST_SECTIONS` (everything except Purpose/Ticket ID) render as Markdown bullet
+  lists, each line hard-wrapped to ≤80 chars via `_format_bullets`/`_as_bullets` — robust to whatever bullet
+  style (or prose blob) the model returns.
 
 ### Control-flow rules baked into `loop.py` (don't break these)
 
 - **Stateless** — each `run()` is fully independent; no state carries between runs.
-- **Retry**: `MAX_RETRIES = 2` on Bedrock-call exceptions. `MissingCredentialsError` is
+- **Retry**: `MAX_RETRIES = 4` on Bedrock-call exceptions. `MissingCredentialsError` is
   **non-retryable** and surfaces immediately (exit code 2 from the CLI) rather than burning retries.
-- **Partial re-execution**: when validation fails, the loop re-plans/re-executes only the failed
-  sections (via `generate(..., only_section=...)`), bounded by `MAX_RETRIES`.
+- **Partial re-execution**: the loop re-executes only the `failed_sections` (via
+  `generate(..., only_section=..., feedback=...)`), bounded by `MAX_RETRIES`. It loops **while any
+  failed section remains** (not just while the report is invalid) — so file-name *leaks* (warnings)
+  drive re-execution too, not only empty required sections (errors). Leak sections pass their
+  `section_feedback` reason into the prompt so a `temperature=0` retry produces *different* output
+  instead of reproducing the rejected section verbatim. A leak the model never fixes persists as a
+  warning (exit 0); it does not fail the run.
 - **Trace**: every phase appends to `AgentTrace`; written to `output/agent_trace.json` alongside
   the report. Preserve trace entries when editing phases — it's the debugging surface.
 - **Output always conforms to the template** — no freeform sections.
@@ -76,7 +103,7 @@ Python 3.12 (`.python-version`); `pyproject.toml` allows `>=3.10`. Prefer `uv`.
 # Set up the dev environment (editable install with dev extras)
 uv venv --python 3.12 .venv && uv pip install -e ".[dev]"
 
-# Run — zero-arg auto-detects base (origin/main→main→master), diffs current branch:
+# Run — zero-arg auto-detects base (origin/main→origin/master→origin/develop→main→master→develop), diffs current branch:
 uv run main.py
 # Explicit range / piped diff / saved file:
 .venv/bin/python main.py --range origin/main...HEAD --branch "$(git branch --show-current)"

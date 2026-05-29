@@ -12,7 +12,7 @@ import json
 import os
 from importlib.resources import files
 from pathlib import Path
-
+from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 from .models import MRReport, Observation, Plan
 
 _DEFAULT_REGION = os.getenv("BEDROCK_REGION") or os.getenv("AWS_REGION") or "ap-south-1"
@@ -93,12 +93,21 @@ def _render_files(observation: Observation) -> str:
     return "\n\n".join(blocks)
 
 
-def _build_user_message(observation: Observation, plan: Plan, only_section: str | None) -> str:
+def _build_user_message(
+    observation: Observation,
+    plan: Plan,
+    only_section: str | None,
+    feedback: str | None = None,
+) -> str:
     """Render the planned facts into a single user-turn prompt for Bedrock."""
     lines = [
         "Decorate the following Pull Request into the MR template.",
-        "Read the ACTUAL CODE below and infer what the author is trying to do and",
-        "why. Summarize intent — do NOT just list file names.",
+        "Read the ACTUAL CODE below as EVIDENCE — it is NOT the structure of your",
+        "answer. Infer the single coherent story: what is the author trying to",
+        "achieve and why, and how do these changes depend on each other.",
+        "Group related edits into conceptual points. Do NOT enumerate files or",
+        "write one bullet per file; do NOT mention file names or paths (except in",
+        "the 'Docs & Linting' section).",
         "",
     ]
     lines.append(f"Branch: {observation.branch or '(none)'}")
@@ -121,7 +130,8 @@ def _build_user_message(observation: Observation, plan: Plan, only_section: str 
     for section, items in plan.sections.items():
         lines.append(f"  {section}: {len(items)} file(s)")
     lines.append("")
-    lines.append("Changed files with their content:")
+    lines.append("Evidence — changed files with their content (for understanding")
+    lines.append("only; synthesize intent, do NOT echo these names back):")
     lines.append("")
     lines.append(_render_files(observation))
     if only_section:
@@ -130,6 +140,13 @@ def _build_user_message(observation: Observation, plan: Plan, only_section: str 
             f"Regenerate ONLY the '{only_section}' section. Return the full JSON "
             "shape, but only that section needs meaningful content."
         )
+        if feedback:
+            # Corrective signal so a temp=0 retry produces *different* output
+            # instead of reproducing the rejected section verbatim.
+            lines.append(
+                f"The prior '{only_section}' was REJECTED because {feedback}. "
+                "Fix exactly that — do not repeat the mistake."
+            )
     return "\n".join(lines)
 
 
@@ -165,7 +182,6 @@ class BedrockExecutor:
 
     def _converse(self, user_message: str) -> str:
         """Call Bedrock `converse` and return the assistant text."""
-        from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 
         try:
             response = self.client.converse(
@@ -185,15 +201,32 @@ class BedrockExecutor:
         plan: Plan,
         *,
         only_section: str | None = None,
+        feedback: str | None = None,
     ) -> MRReport:
         """Generate the full report, or regenerate a single failed section.
 
+        `feedback` (set only on a re-execution) tells the model why the prior
+        attempt at `only_section` was rejected, so a temp=0 retry can converge.
         The model is instructed (via the system prompt) to return JSON shaped as
         {"title": str, "sections": {section_name: str, ...}}.
         """
-        user_message = _build_user_message(observation, plan, only_section)
+        user_message = _build_user_message(observation, plan, only_section, feedback)
         raw = self._converse(user_message)
         return _parse_report(raw)
+
+
+def _coerce_section(value) -> str:
+    """Normalize a section value to a string.
+
+    The model is asked to return bullet lists, so it may emit either a string
+    (newline-separated bullets) or a JSON array of points. Arrays are joined
+    one-per-line; rendering re-formats either form into wrapped bullets.
+    """
+    if isinstance(value, list):
+        # Prefix "- " so each array item is preserved as one bullet — rendering
+        # won't re-split a single item on its internal punctuation.
+        return "\n".join(f"- {str(item).strip()}" for item in value if str(item).strip())
+    return value if isinstance(value, str) else str(value)
 
 
 def _parse_report(raw: str) -> MRReport:
@@ -206,4 +239,11 @@ def _parse_report(raw: str) -> MRReport:
         text = text.strip("`")
         text = text[text.find("{") : text.rfind("}") + 1]
     data = json.loads(text)
-    return MRReport(title=data.get("title", ""), sections=data.get("sections", {}))
+    sections = data.get("sections", {})
+    if not isinstance(sections, dict):
+        sections = {}
+    return MRReport(
+        title=data.get("title", ""),
+        sections={k: _coerce_section(v) for k, v in sections.items()},
+        risk_level=data.get("risk_level", ""),
+    )

@@ -16,27 +16,68 @@ class ChangeCategory(str, Enum):
 
     Classification rules (from the spec):
       - new files            -> FEATURES_ADDED
-      - modified logic       -> CODE_CHANGES or BUG_FIXED
-      - formatting-only      -> LINTING_FIXED
-      - config/dependency    -> CODE_CHANGES
+      - modified logic       -> CODE_CHANGES or BUG_FIXES
+      - docs / formatting    -> DOCS_LINTING
+      - config/dependency    -> CHORES
+
+    These values MUST match the section keys in `prompts/mr_template.txt`.
     """
 
     CODE_CHANGES = "Code Changes"
     FEATURES_ADDED = "Features Added"
-    LINTING_FIXED = "Linting Fixed"
-    BUG_FIXED = "Bug Fixed"
+    CHORES = "Chores"
+    DOCS_LINTING = "Docs & Linting"
+    BUG_FIXES = "Bug Fixes"
 
 
 # The fixed set of sections every MR report must contain, in output order.
-# Purpose and Ticket ID are header fields; the rest come from ChangeCategory.
+# Purpose and Ticket ID are header fields; the rest mirror the JSON section keys
+# defined in `prompts/mr_template.txt` — keep these two in sync.
 REQUIRED_SECTIONS: tuple[str, ...] = (
     "Purpose",
     "Ticket ID",
-    ChangeCategory.CODE_CHANGES.value,
-    ChangeCategory.FEATURES_ADDED.value,
-    ChangeCategory.LINTING_FIXED.value,
-    ChangeCategory.BUG_FIXED.value,
+    "Code Changes",
+    "Features Added",
+    "Bug Fixes",
+    "Breaking Changes",
+    "Chores",
+    "Docs & Linting",
+    "Risks",
 )
+
+# Sections allowed to be empty (no such change in this PR). Purpose and Code
+# Changes are always required; Ticket ID is warn-only. Shared by render (skip
+# empty blocks) and validate (don't error on absence) so the two never drift.
+OPTIONAL_SECTIONS: frozenset[str] = frozenset(
+    {
+        "Features Added",
+        "Bug Fixes",
+        "Breaking Changes",
+        "Chores",
+        "Docs & Linting",
+        "Risks",
+    }
+)
+
+# Body sections rendered as bullet lists (everything except the Purpose prose
+# and the Ticket ID identifier). This is the single source of truth shared by
+# render (which sections to bulletize) and validate (which sections the
+# "no file names" rule applies to) so the two phases can't disagree.
+LIST_SECTIONS: frozenset[str] = frozenset(
+    {
+        "Code Changes",
+        "Features Added",
+        "Bug Fixes",
+        "Breaking Changes",
+        "Chores",
+        "Docs & Linting",
+        "Risks",
+    }
+)
+
+# The one list section where naming the affected document or tool is the whole
+# point, so it is exempt from the "no file names" guardrail in validate.
+FILENAME_ALLOWED_SECTIONS: frozenset[str] = frozenset({"Docs & Linting"})
 
 
 @dataclass
@@ -84,6 +125,9 @@ class MRReport:
 
     title: str = ""
     sections: dict[str, str] = field(default_factory=dict)
+    # Overall review/testing risk the model assigned: "HIGH" | "Medium" | "LOW"
+    # (empty if the model didn't return one — render derives a fallback).
+    risk_level: str = ""
 
 
 @dataclass
@@ -95,6 +139,10 @@ class ValidationResult:
     warnings: list[str] = field(default_factory=list)
     # Sections that failed and should be re-planned/re-executed in isolation.
     failed_sections: list[str] = field(default_factory=list)
+    # Per-section reason a section needs regenerating (e.g. a file-name leak),
+    # fed back into the EXECUTE prompt so a temp=0 retry can actually converge
+    # instead of reproducing the same output. Empty for plain "section is empty".
+    section_feedback: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass

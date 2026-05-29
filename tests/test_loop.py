@@ -21,9 +21,11 @@ class _FakeExecutor(BedrockExecutor):
         self._full = full
         self._partials = partials or {}
         self.calls: list = []
+        self.feedbacks: list = []
 
-    def generate(self, observation, plan, *, only_section=None):
+    def generate(self, observation, plan, *, only_section=None, feedback=None):
         self.calls.append(only_section)
+        self.feedbacks.append(feedback)
         if only_section is None:
             return self._full
         return MRReport(sections={only_section: self._partials.get(only_section, "filled")})
@@ -35,7 +37,7 @@ def test_loop_returns_valid_report():
         sections={
             "Purpose": "introduce f",
             "Ticket ID": "JIRA-1",
-            "Code Changes": "added feature.py",
+            "Code Changes": "added a feature function",
             "Features Added": "f()",
         },
     )
@@ -48,7 +50,7 @@ def test_loop_returns_valid_report():
 def test_loop_reexecutes_only_failed_section():
     full = MRReport(
         title="Add feature",
-        sections={"Purpose": "", "Code Changes": "added feature.py"},
+        sections={"Purpose": "", "Code Changes": "added a feature function"},
     )
     executor = _FakeExecutor(full, partials={"Purpose": "introduce f"})
     result = loop.run(NEW_FILE_DIFF, executor=executor)
@@ -56,3 +58,27 @@ def test_loop_reexecutes_only_failed_section():
     assert result.report.sections["Purpose"] == "introduce f"
     # Re-execution targeted only the failing section.
     assert "Purpose" in executor.calls
+
+
+def test_loop_reexecutes_and_fixes_file_name_leak():
+    full = MRReport(
+        title="Update docs",
+        sections={
+            "Purpose": "refresh the guides",
+            "Ticket ID": "JIRA-2",
+            "Code Changes": "reworked the agent loop control flow",
+            # A leak: test files are not docs and must not be cited by path.
+            "Docs & Linting": "added tests/test_render.py and test_execute.py",
+        },
+    )
+    clean = "documented the new template across the README"
+    executor = _FakeExecutor(full, partials={"Docs & Linting": clean})
+    result = loop.run(NEW_FILE_DIFF, executor=executor)
+    # The leaking section was regenerated, and with corrective feedback so a
+    # temp=0 retry could actually differ from the rejected output.
+    assert "Docs & Linting" in executor.calls
+    assert any(f and "file path" in f for f in executor.feedbacks)
+    # The final report no longer leaks; a leak never fails the run (exit stays 0).
+    assert result.report.sections["Docs & Linting"] == clean
+    assert result.validation.ok is True
+    assert not any("file" in w.lower() for w in result.validation.warnings)
