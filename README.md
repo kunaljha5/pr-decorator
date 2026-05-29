@@ -1,307 +1,277 @@
-# PR Decorator Agent — Primary Instructions
+# pr-decorator
 
-## Project Overview
-An agentic AI system powered by **AWS Bedrock** that automatically decorates Pull Requests (Merge Requests) by following a structured observe → plan → execute → observe loop, and generates a standardized MR report as output.
+Generate structured, high-quality Pull Request descriptions from git diffs using AWS Bedrock.
 
 ---
 
-## Agent Loop (Core Behavior)
+## Overview
+
+`pr-decorator` is a CLI tool that analyzes your git changes and produces a standardized Pull Request (PR/MR) description using an agentic workflow.
+
+It follows a structured loop:
 
 ```
-OBSERVE → PLAN → EXECUTE → OBSERVE → (if outcome OK) → FINISH & GENERATE OUTPUT
+OBSERVE → PLAN → EXECUTE → VALIDATE → OUTPUT
 ```
 
-| Phase       | Description |
-|-------------|-------------|
-| **Observe** | Read the raw diff, commits, branch name, ticket references, and any existing MR metadata |
-| **Plan**    | Decide what sections need to be filled, what code changes occurred, what categories they fall into |
-| **Execute** | Call AWS Bedrock (Claude/Titan/etc.) to generate each section of the MR description |
-| **Observe** | Validate the generated output — check for completeness, correctness, and formatting |
-| **Finish**  | If output passes validation, finalize and post/return the decorated MR |
+The output is a clean, consistent PR description that is ready to paste into GitHub or GitLab.
 
 ---
 
-## MR Output Template
+## Features
 
+* Generates structured PR descriptions from git diffs
+* Classifies changes into features, fixes, chores, and risks
+* Enforces a consistent PR template across teams
+* Uses AWS Bedrock for model inference
+* Supports Markdown and JSON output formats
+* Includes validation and retry logic
+
+---
+
+## Why AWS Bedrock?
+
+This project uses AWS Bedrock as the inference backend.
+
+* Runs within your AWS environment (no external API dependency)
+* Supports multiple foundation models (Claude, Titan, Llama)
+* Uses IAM-based authentication (no API keys required)
+* Fits naturally into AWS-native workflows
+
+---
+
+## Example Output
+
+### Input (git diff)
+
+```diff
++ Added authentication middleware
+- Fixed token validation bug
 ```
-MR Title          : <concise, imperative-mood title>
-MR Description    :
-  Purpose         : <why this MR exists — business/technical reason>
-  <summary table> : Ticket | Feature | Bug Fix | Chore | Breaking | Risk(HIGH/Medium/LOW)
-  Code Changes    : <how the system was modified — implementation/flow/structure>
-  Features Added  : <new externally visible capabilities, if any>
-  Bug Fixes       : <bugs resolved with brief description, if any>
-  Breaking Changes: <backward-incompatible changes, if any>
-  Chores          : <config/dependency/tooling/scaffolding updates, if any>
-  Docs & Linting  : <which docs/lint updated, fixed, added, or deleted, if any>
-  Risks           : <areas needing careful review/testing, if any>
-```
 
-A compact summary table is rendered right after Purpose. Its **first column is
-the linked Ticket ID** (`—` if none); the Feature/Bug Fix/Chore/Breaking marks
-are derived from which sections are populated, and the Risk column shows the
-model's HIGH/Medium/LOW assessment. The Ticket ID is presented in this table
-only — not as its own block. Optional sections that have no content (e.g.
-Features Added on a bug-fix-only MR) are **skipped** in the output rather than
-rendered empty.
+### Output
 
-Every section except Purpose and Ticket ID is rendered as a **bullet list**,
-with each bullet hard-wrapped to **≤80 characters** so points stay scannable.
-The agent is instructed to **synthesize the story** — grouping dependent changes
-into conceptual points rather than listing files — and to **never name files or
-paths**, except in **Docs & Linting**, where naming which docs/lint changed is
-the whole point.
+```md
+MR Title: Add authentication middleware and fix token validation
 
----
+MR Description:
 
-## Primary Instructions for the Agent
+Purpose:
+Improve authentication reliability and security
 
-### 1. Input Collection (Observe Phase)
-- Accept a **git diff** or list of changed files as primary input
-- Accept optional metadata: branch name, commit messages, linked ticket ID
-- Accept optional: existing MR title/description (for enrichment mode)
+Summary:
+Ticket | Feature | Bug Fix | Chore | Breaking | Risk
+—      |   ✓     |   ✓     |       |          | LOW
 
-### 2. Analysis & Planning (Plan Phase)
-- Parse the diff to classify changes:
-  - Docs (`.md`/README/etc.) and formatting/style-only changes → Docs & Linting
-  - Config/dependency/tooling changes → Chores
-  - New files → Features Added
-  - Modified logic → Code Changes or Bug Fixes
-- Extract ticket ID from branch name or commit message (e.g. `feat/JIRA-123-...`)
-- Infer the purpose from commit messages and change patterns
+Code Changes:
+- Added middleware for request authentication
+- Updated token validation logic
 
-### 3. Generation (Execute Phase)
-- Call **AWS Bedrock** with a structured prompt per section
-- Use a system prompt that enforces the MR template format
-- Generate each section independently or in a single structured call
-- Keep descriptions concise, technical, and developer-friendly
+Bug Fixes:
+- Fixed incorrect token parsing edge case
 
-### 4. Validation (Observe Phase — Post Execute)
-- Check all required fields are populated (no empty sections)
-- Ensure Ticket ID is present (warn if missing)
-- Ensure MR Title follows imperative mood convention (e.g. "Add", "Fix", "Refactor")
-- If any section is empty or invalid → re-plan and re-execute that section only
-
-### 5. Output Generation (Finish Phase)
-- Output the final decorated MR as:
-  - Markdown string (for GitLab/GitHub MR body)
-  - Optionally: JSON payload for API submission
-- Log a brief agent trace: what was observed, planned, executed, and validated
-
----
-
-## AWS Bedrock Integration
-
-- **Model**: Amazon **Nova Pro** via Bedrock. Default model id is the APAC
-  cross-region inference profile `apac.amazon.nova-pro-v1:0` (required to call
-  Nova in `ap-south-1`). Override with the `BEDROCK_MODEL_ID` env var or the
-  `--model` flag (e.g. `amazon.nova-pro-v1:0` / `us.amazon.nova-pro-v1:0` in US regions).
-- **Invocation**: Uses `bedrock-runtime` → `converse` API (model-agnostic).
-- **Prompt Strategy**: Strict output-format enforcement via `prompts/mr_template.txt`.
-- **Region**: Configurable. Default `ap-south-1`; override with `BEDROCK_REGION` /
-  `AWS_REGION` env var or the `--region` flag.
-- **Auth**: IAM Role / AWS credential chain (no hardcoded keys).
-
----
-
-## Non-Functional Requirements
-
-- The agent must be **stateless** — each PR decoration is an independent run
-- Support **retry logic** (max 2 retries) if Bedrock call fails
-- Output must always conform to the MR template — no freeform deviation
-- Agent trace/log must be saved alongside output for debugging
-
----
-
-## File Structure (Suggested)
-
-```
-pr-decorator/
-├── instruction.md          ← this file
-├── agent/
-│   ├── observe.py          ← diff parsing & input collection
-│   ├── plan.py             ← change classification & section planning
-│   ├── execute.py          ← AWS Bedrock call & prompt management
-│   ├── validate.py         ← output validation logic
-│   └── loop.py             ← orchestrates observe→plan→execute→observe
-├── prompts/
-│   └── mr_template.txt     ← system prompt with MR template
-├── output/
-│   └── mr_report.md        ← generated MR decoration output
-└── main.py                 ← entry point
+Risks:
+- Low risk; changes are isolated to auth flow
 ```
 
 ---
 
-## Installation & Usage
+## Installation
 
-### 1. Prerequisites
-- Python **3.10+**.
-- `git` on your `PATH` (the CLI shells out to it to read diffs).
-- AWS credentials with Bedrock access in your target region, and **model access
-  to Amazon Nova Pro enabled** in the Bedrock console
-  (*Bedrock → Model access → Nova Pro*).
-
-### 2. Install
-
-Install the published package — this puts the `pr-decorator` command on your `PATH`:
+### Using pip
 
 ```bash
 pip install pr-decorator
-# or, with uv:
-uv pip install pr-decorator
-# or run without installing into your environment:
-uvx pr-decorator --help
 ```
 
-To keep it isolated from your other tools, install it via [`pipx`](https://pipx.pypa.io/):
+### Using uv
+
+```bash
+uv pip install pr-decorator
+```
+
+### Using pipx (recommended)
+
 ```bash
 pipx install pr-decorator
 ```
 
-Confirm it's available:
-```bash
-pr-decorator --help
-```
+---
 
-### 3. Configure AWS
+## Prerequisites
 
-Auth uses the standard AWS credential chain — **never hardcode keys**. Use any of:
-```bash
-aws configure                  # writes ~/.aws/credentials + config
-# or
-aws sso login --profile <p> && export AWS_PROFILE=<p>
-# or export AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN
-```
+* Python 3.10+
+* Git installed
+* AWS credentials with Bedrock access
+* Access to Amazon Nova Pro model in Bedrock
 
-Optional environment overrides (defaults shown):
+---
+
+## Configuration
+
+Set optional environment variables:
+
 ```bash
 export BEDROCK_REGION=ap-south-1
 export BEDROCK_MODEL_ID=apac.amazon.nova-pro-v1:0
 ```
 
-Verify credentials + region reach AWS before running the agent:
+Authentication uses the standard AWS credential chain.
+
+---
+
+## Usage
+
+Run inside a git repository:
+
 ```bash
-python -c "import boto3; print(boto3.client('sts', region_name='ap-south-1').get_caller_identity()['Account'])"
-```
-
-### 4. Run
-
-Run `pr-decorator` from inside the git repository whose changes you want to decorate:
-
-```bash
-# Zero-arg: auto-detect base (origin/main → origin/master → origin/develop →
-# main → master → develop), diff the current branch against it, and auto-fill
-# branch + commit messages. Just run:
 pr-decorator
-
-# Override the range / branch / ticket explicitly:
-pr-decorator --range origin/main...HEAD --branch "$(git branch --show-current)"
-
-# Or pipe any diff in:
-git diff origin/main | pr-decorator --format markdown
-
-# From a saved diff file, JSON output, with an explicit ticket:
-pr-decorator --diff-file changes.diff --ticket-id PRD-1 --format json
 ```
 
-Useful flags: `--model`, `--region`, `--format {markdown,json}`, `--no-write`
-(print only, skip writing to `output/`), `--context-lines N` (context lines for
-`git diff --unified` on `--range`; the large default feeds whole-file content to
-the LLM so it can judge intent — lower it for very large PRs). Content size is
-capped via `MR_MAX_FILE_CHARS` / `MR_MAX_TOTAL_CHARS` env vars.
-
-### 5. Validate it worked
-
-A successful run:
-- exits with code **0** (non-zero means a required section failed validation),
-- prints the decorated MR to stdout, and
-- writes `output/mr_report.md` (or `.json`) **and** `output/agent_trace.json`
-  in the current working directory.
-
-Check the trace to confirm the Bedrock call landed — look for an `execute`
-entry with `"ok": true` and a `finish` entry with `"ok": true`:
-```bash
-cat output/agent_trace.json
-```
-
-> **Missing AWS credentials?** If no credentials resolve from the chain, the run
-> stops immediately (it does **not** retry) with a clear message —
-> `error: AWS credentials are missing. ...` — and exits with code `2`.
-
-### Develop from source
-
-Contributing to `pr-decorator` itself? Clone the repo and use an editable install
-(Python 3.12 recommended — see `.python-version`):
+### Common examples
 
 ```bash
-uv venv --python 3.12 .venv && uv pip install -e ".[dev]"
-.venv/bin/pr-decorator --help        # the CLI, from your checkout
-.venv/bin/ruff check .               # lint
-.venv/bin/pytest                     # offline test suite (stubbed Bedrock, no AWS)
+# Custom range
+pr-decorator --range origin/main...HEAD
+
+# Pipe diff
+git diff origin/main | pr-decorator
+
+# Use file input
+pr-decorator --diff-file changes.diff
+
+# JSON output
+pr-decorator --format json
 ```
 
 ---
 
-## CI / CD — Build, Package & Publish
+## Output
 
-The `.github/workflows/build.yml` workflow runs on every push, PR, and version
-tag:
+A successful run:
 
-- **build** — builds the wheel + sdist with `uv build`, validates metadata with
-  `twine check`, installs the wheel into a clean venv to confirm the
-  `pr-decorator` CLI and packaged prompt work, and uploads `dist/*` as a
-  downloadable artifact.
-- **publish-pypi** *(tags `v*` only)* — publishes to PyPI via **Trusted
-  Publishing** (OIDC; no API tokens stored).
-- **release** *(tags `v*` only)* — attaches the artifacts to a GitHub Release.
+* Prints the PR description to stdout
+* Writes output to `output/mr_report.md` (or `.json`)
+* Writes execution trace to `output/agent_trace.json`
 
-### Publishing to PyPI
+---
 
-The package is published to <https://pypi.org/project/pr-decorator/>.
+## How It Works
 
-**One-time setup — register the GitHub repo as a Trusted Publisher on PyPI:**
+The system follows an agent loop:
 
-1. Log in to PyPI → *Your projects* → **pr-decorator** → *Settings* →
-   *Publishing* (for a brand-new name, use *Publishing* → *Add a pending
-   publisher* first).
-2. Add a GitHub Actions publisher:
-   - **Owner:** `kunaljha5`
-   - **Repository:** `pr-decorator`
-   - **Workflow name:** `build.yml`
-   - **Environment:** `pypi`
-3. In the GitHub repo, create an **Environment** named `pypi`
-   (*Settings → Environments → New environment*) — optionally add required
-   reviewers to gate releases.
+### 1. Observe
 
-**Cut a release:**
+* Reads git diff, commits, branch, and metadata
+
+### 2. Plan
+
+* Classifies changes (feature, fix, chore, docs)
+* Determines required PR sections
+
+### 3. Execute
+
+* Calls AWS Bedrock to generate content
+
+### 4. Validate
+
+* Ensures format, completeness, and correctness
+* Retries failed sections
+
+### 5. Output
+
+* Produces final PR description
+
+---
+
+## PR Template
+
+The generated output follows a fixed structure:
+
+* Title
+* Purpose
+* Summary table
+* Code Changes
+* Features Added
+* Bug Fixes
+* Breaking Changes
+* Chores
+* Docs & Linting
+* Risks
+
+Empty sections are automatically omitted.
+
+---
+
+## Architecture
+
+```
+Git Diff → CLI → Agent Loop → AWS Bedrock → Validation → Output
+```
+
+---
+
+## Development
+
+Clone the repository and install in editable mode:
 
 ```bash
-# bump version in pyproject.toml first (e.g. 0.1.0 -> 0.1.1), commit, then:
+uv venv --python 3.12 .venv
+uv pip install -e ".[dev]"
+```
+
+Run:
+
+```bash
+pr-decorator --help
+ruff check .
+pytest
+```
+
+---
+
+## CI/CD
+
+The project includes GitHub Actions for:
+
+* Building package artifacts
+* Validating installation
+* Publishing to PyPI (via trusted publishing)
+* Creating GitHub releases
+
+---
+
+## Publishing
+
+To release a new version:
+
+```bash
 git tag v0.1.1
 git push origin v0.1.1
 ```
 
-The tag triggers build → publish-pypi → release. After it succeeds:
-
-```bash
-pip install pr-decorator        # or: uv pip install pr-decorator
-pr-decorator --help
-```
-
-> To dry-run against **TestPyPI** first, add a Trusted Publisher on
-> <https://test.pypi.org> and set `repository-url:
-> https://test.pypi.org/legacy/` on the `pypa/gh-action-pypi-publish` step.
->
-> Manual publish without CI (needs a PyPI API token):
-> `uv build && uvx twine upload dist/*`.
+This triggers automated build and publish workflows.
 
 ---
 
-## Success Criteria
+## Requirements
 
-- [ ] Agent correctly classifies all change types from a git diff
-- [ ] All MR template fields are populated in every run
-- [ ] AWS Bedrock is called correctly with proper auth
-- [ ] Agent loop retries on failure before giving up
-- [ ] Final output is valid Markdown ready to paste into GitLab/GitHub MR
+* Stateless execution per run
+* Strict adherence to PR template
+* Retry logic for Bedrock failures
+* Output validation before completion
+
+---
+
+## Roadmap
+
+* GitHub Action integration
+* VS Code extension
+* PR auto-posting via GitHub API
+* Support for additional models
+
+---
+
+## License
+
+MIT
