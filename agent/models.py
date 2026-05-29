@@ -59,6 +59,26 @@ OPTIONAL_SECTIONS: frozenset[str] = frozenset(
     }
 )
 
+# Body sections rendered as bullet lists (everything except the Purpose prose
+# and the Ticket ID identifier). This is the single source of truth shared by
+# render (which sections to bulletize) and validate (which sections the
+# "no file names" rule applies to) so the two phases can't disagree.
+LIST_SECTIONS: frozenset[str] = frozenset(
+    {
+        "Code Changes",
+        "Features Added",
+        "Bug Fixes",
+        "Breaking Changes",
+        "Chores",
+        "Docs & Linting",
+        "Risks",
+    }
+)
+
+# The one list section where naming the affected document or tool is the whole
+# point, so it is exempt from the "no file names" guardrail in validate.
+FILENAME_ALLOWED_SECTIONS: frozenset[str] = frozenset({"Docs & Linting"})
+
 
 @dataclass
 class FileChange:
@@ -119,6 +139,10 @@ class ValidationResult:
     warnings: list[str] = field(default_factory=list)
     # Sections that failed and should be re-planned/re-executed in isolation.
     failed_sections: list[str] = field(default_factory=list)
+    # Per-section reason a section needs regenerating (e.g. a file-name leak),
+    # fed back into the EXECUTE prompt so a temp=0 retry can actually converge
+    # instead of reproducing the same output. Empty for plain "section is empty".
+    section_feedback: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass

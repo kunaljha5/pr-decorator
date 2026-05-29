@@ -41,12 +41,20 @@ SYNTHESIZE THE STORY (HIGHEST PRIORITY)
         "Adjusted the loop", "Changed the CLI"
   GOOD: "Threaded a new output contract end-to-end so reports carry Breaking
         Changes, Chores, and Risks alongside a risk level"
+* This applies to EVERY section, INCLUDING Docs & Linting. Even where naming a
+  document is allowed, group related updates into one point — never list one
+  bullet per file.
+* BAD : "Updated the README", "Updated the architecture guide"
+  GOOD: "Documented the new MR template across the README and architecture
+        guide"
 
 BULLET FORMAT (applies to Code Changes, Features Added, Bug Fixes, Breaking
 Changes, Chores, Docs & Linting, Risks — NOT Purpose or Ticket ID):
 
 * Return each of these sections as a list of bullet points, one per line.
 * Each bullet MUST be a single, specific point of AT MOST 80 characters.
+* ONE IDEA PER BULLET. If a bullet combines a logic change with a rule, an
+  output behavior, or an "and", split it into separate bullets.
 * Split distinct ideas into separate bullets instead of long sentences.
 * Purpose stays as 1–2 plain-prose sentences; Ticket ID is a bare id.
 
@@ -67,8 +75,12 @@ CRITICAL RULES (HIGH PRIORITY)
 
 * STRICT SEPARATION:
 
-  * Code Changes = HOW (implementation)
+  * Code Changes = HOW (implementation: logic, control flow, structure)
   * Features Added = WHAT (externally visible behavior)
+  * "Code Changes" is for LOGIC and STRUCTURE ONLY. Documentation and
+    lint/format edits belong in "Docs & Linting"; dependency, config, build,
+    CI, test-only, and scaffolding edits belong in "Chores". Do NOT mix these
+    into "Code Changes".
 
 * Each section must provide UNIQUE information.
   Do NOT repeat the same idea across sections.
@@ -113,11 +125,20 @@ SECTION DEFINITIONS
 
 * Docs & Linting
   Documentation and style-only changes. This is the one section where naming
-  the affected document or tool is allowed:
+  the affected document or tool is allowed — but the same discipline as every
+  other section still applies:
 
   * which docs were added/updated/removed (e.g. README, usage guide, comments)
   * lint/format fixes and what tool/rule (e.g. ruff formatting, import order)
   * state the action: added, updated, fixed, or deleted
+  * Name the DOCUMENT or TOOL conceptually ("the README", "the architecture
+    guide", "ruff") — NEVER raw source paths or extensions (no "README.md",
+    "docs/usage.md", "test_render.py").
+  * SYNTHESIZE: group related doc updates into one point; do NOT write one
+    bullet per file or per document.
+  * This section is ONLY docs + lint/format. Test, source, config, and build
+    changes are NOT docs/linting — route tests and scaffolding to Chores and
+    logic to Code Changes.
 
 * Risks
   Must describe a realistic concern:
@@ -141,10 +162,14 @@ WRITING RULES
 
 * Title should reflect BOTH action and scope.
 
-* NEVER reference file names, paths, modules, or directories in any bullet.
-  Describe behavior conceptually instead. The ONLY exception is the
-  "Docs & Linting" section, where you MAY name a document (e.g. "the README",
-  "the architecture guide") or tool (e.g. "ruff") so reviewers know what changed.
+* NEVER reference file names, paths, modules, or directories in any bullet of
+  Code Changes, Features Added, Bug Fixes, Breaking Changes, Chores, or Risks.
+  This includes file extensions (e.g. "loop.py", "README.md"), directory paths
+  (e.g. "agent/", "tests/render"), and module/class names. Describe the behavior
+  or component conceptually instead (e.g. "the agent loop", "the renderer").
+  The ONLY exception is the "Docs & Linting" section, where you MAY name a
+  document (e.g. "the README", "the architecture guide") or tool (e.g. "ruff")
+  so reviewers know what changed.
 
 * Be concise but specific. Purpose = 1–3 sentences; all other sections are
   bullet lists of short points (≤80 chars each), not paragraphs.

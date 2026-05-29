@@ -27,8 +27,7 @@ OBSERVE → PLAN → EXECUTE → OBSERVE → (if outcome OK) → FINISH & GENERA
 MR Title          : <concise, imperative-mood title>
 MR Description    :
   Purpose         : <why this MR exists — business/technical reason>
-  Ticket ID       : <linked issue/ticket e.g. JIRA-123>
-  <summary table> : Feature | Bug Fix | Chore | Breaking | Risk(HIGH/Medium/LOW)
+  <summary table> : Ticket | Feature | Bug Fix | Chore | Breaking | Risk(HIGH/Medium/LOW)
   Code Changes    : <how the system was modified — implementation/flow/structure>
   Features Added  : <new externally visible capabilities, if any>
   Bug Fixes       : <bugs resolved with brief description, if any>
@@ -38,11 +37,13 @@ MR Description    :
   Risks           : <areas needing careful review/testing, if any>
 ```
 
-A compact summary table is rendered right after Purpose and Ticket ID — its
-Feature/Bug Fix/Chore/Breaking marks are derived from which sections are
-populated, and the Risk column shows the model's HIGH/Medium/LOW assessment.
-Optional sections that have no content (e.g. Features Added on a bug-fix-only
-MR) are **skipped** in the output rather than rendered empty.
+A compact summary table is rendered right after Purpose. Its **first column is
+the linked Ticket ID** (`—` if none); the Feature/Bug Fix/Chore/Breaking marks
+are derived from which sections are populated, and the Risk column shows the
+model's HIGH/Medium/LOW assessment. The Ticket ID is presented in this table
+only — not as its own block. Optional sections that have no content (e.g.
+Features Added on a bug-fix-only MR) are **skipped** in the output rather than
+rendered empty.
 
 Every section except Purpose and Ticket ID is rendered as a **bullet list**,
 with each bullet hard-wrapped to **≤80 characters** so points stay scannable.
@@ -189,8 +190,9 @@ python -c "import boto3; print(boto3.client('sts', region_name='ap-south-1').get
 Run `pr-decorator` from inside the git repository whose changes you want to decorate:
 
 ```bash
-# Zero-arg: auto-detect base (origin/main → main → master), diff the current
-# branch against it, and auto-fill branch + commit messages. Just run:
+# Zero-arg: auto-detect base (origin/main → origin/master → origin/develop →
+# main → master → develop), diff the current branch against it, and auto-fill
+# branch + commit messages. Just run:
 pr-decorator
 
 # Override the range / branch / ticket explicitly:

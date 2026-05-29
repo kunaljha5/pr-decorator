@@ -93,7 +93,12 @@ def _render_files(observation: Observation) -> str:
     return "\n\n".join(blocks)
 
 
-def _build_user_message(observation: Observation, plan: Plan, only_section: str | None) -> str:
+def _build_user_message(
+    observation: Observation,
+    plan: Plan,
+    only_section: str | None,
+    feedback: str | None = None,
+) -> str:
     """Render the planned facts into a single user-turn prompt for Bedrock."""
     lines = [
         "Decorate the following Pull Request into the MR template.",
@@ -135,6 +140,13 @@ def _build_user_message(observation: Observation, plan: Plan, only_section: str 
             f"Regenerate ONLY the '{only_section}' section. Return the full JSON "
             "shape, but only that section needs meaningful content."
         )
+        if feedback:
+            # Corrective signal so a temp=0 retry produces *different* output
+            # instead of reproducing the rejected section verbatim.
+            lines.append(
+                f"The prior '{only_section}' was REJECTED because {feedback}. "
+                "Fix exactly that — do not repeat the mistake."
+            )
     return "\n".join(lines)
 
 
@@ -189,13 +201,16 @@ class BedrockExecutor:
         plan: Plan,
         *,
         only_section: str | None = None,
+        feedback: str | None = None,
     ) -> MRReport:
         """Generate the full report, or regenerate a single failed section.
 
+        `feedback` (set only on a re-execution) tells the model why the prior
+        attempt at `only_section` was rejected, so a temp=0 retry can converge.
         The model is instructed (via the system prompt) to return JSON shaped as
         {"title": str, "sections": {section_name: str, ...}}.
         """
-        user_message = _build_user_message(observation, plan, only_section)
+        user_message = _build_user_message(observation, plan, only_section, feedback)
         raw = self._converse(user_message)
         return _parse_report(raw)
 

@@ -28,12 +28,16 @@ class DecorationResult:
     trace: AgentTrace
 
 
-def _execute_with_retry(executor: BedrockExecutor, observation, plan, trace, *, only_section=None):
+def _execute_with_retry(
+    executor: BedrockExecutor, observation, plan, trace, *, only_section=None, feedback=None
+):
     """Call EXECUTE, retrying on exception up to MAX_RETRIES times."""
     last_error: Exception | None = None
     for attempt in range(MAX_RETRIES + 1):
         try:
-            report = executor.generate(observation, plan, only_section=only_section)
+            report = executor.generate(
+                observation, plan, only_section=only_section, feedback=feedback
+            )
             trace.record("execute", attempt=attempt, only_section=only_section, ok=True)
             return report
         except MissingCredentialsError as exc:
@@ -83,13 +87,29 @@ def run(
     report = _execute_with_retry(executor, observation, plan, trace)
 
     # OBSERVE (validate) — re-execute only failed sections, bounded by retries.
+    # "Failed" covers both empty required sections (errors) and file-name leaks
+    # (warnings); both want regeneration, so we loop while any remain rather than
+    # only while the report is invalid. Leak sections carry corrective feedback
+    # so a temp=0 retry can converge instead of reproducing the same output.
     validation = validate_phase.validate(report)
     for attempt in range(MAX_RETRIES):
-        if validation.ok or not validation.failed_sections:
+        if not validation.failed_sections:
             break
-        trace.record("validate", attempt=attempt, errors=validation.errors)
+        trace.record(
+            "validate",
+            attempt=attempt,
+            errors=validation.errors,
+            warnings=validation.warnings,
+        )
         for section in validation.failed_sections:
-            partial = _execute_with_retry(executor, observation, plan, trace, only_section=section)
+            partial = _execute_with_retry(
+                executor,
+                observation,
+                plan,
+                trace,
+                only_section=section,
+                feedback=validation.section_feedback.get(section),
+            )
             if section in partial.sections:
                 report.sections[section] = partial.sections[section]
             if partial.title and not report.title:

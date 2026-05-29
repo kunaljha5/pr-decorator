@@ -7,12 +7,15 @@ def _report(**sections):
     return MRReport(title="Fix base detection", risk_level=risk, sections=sections)
 
 
-def test_summary_table_sits_after_ticket_id_and_before_body():
+def test_summary_table_sits_after_purpose_and_before_body():
     md = to_markdown(_report(Purpose="why", **{"Ticket ID": "T-1", "Code Changes": "how"}))
-    ticket = md.index("T-1")
-    table = md.index("| Feature | Bug Fix | Chore | Breaking | Risk |")
+    purpose = md.index("**Purpose**")
+    table = md.index("| Ticket | Feature | Bug Fix | Chore | Breaking | Risk |")
     body = md.index("**Code Changes**")
-    assert ticket < table < body
+    assert purpose < table < body
+    # Ticket id now lives in the table's first column, not its own block.
+    assert "**Ticket ID**" not in md
+    assert "T-1" in md
 
 
 def test_table_marks_derive_from_populated_sections():
@@ -27,8 +30,15 @@ def test_table_marks_derive_from_populated_sections():
             },
         )
     )
-    # Feature & Breaking absent -> "—"; Bug Fix & Chore present -> "✅"
-    assert "| — | ✅ | ✅ | — |" in md
+    # Ticket leads; Feature & Breaking absent -> "—"; Bug Fix & Chore -> "✅".
+    assert "| T-1 | — | ✅ | ✅ | — | Medium |" in md
+
+
+def test_missing_ticket_renders_dash_in_table():
+    md = to_markdown(_report(Purpose="why", **{"Ticket ID": "", "Code Changes": "how"}))
+    table_row = [ln for ln in md.splitlines() if ln.startswith("| ") and "LOW" in ln][-1]
+    # First data cell is the ticket; absent -> placeholder dash.
+    assert table_row.split("|")[1].strip() == "—"
 
 
 def test_empty_optional_sections_are_skipped():
@@ -117,9 +127,9 @@ def test_chore_column_reflects_docs_and_linting():
     # Both populate the single "Chore" column in the summary table.
     row_chore = [ln for ln in md_chore.splitlines() if ln.startswith("| ") and "✅" in ln][-1]
     row_docs = [ln for ln in md_docs.splitlines() if ln.startswith("| ") and "✅" in ln][-1]
-    # Chore column is the 3rd cell.
-    assert row_chore.split("|")[3].strip() == "✅"
-    assert row_docs.split("|")[3].strip() == "✅"
+    # Chore is the 4th cell now that Ticket leads the table.
+    assert row_chore.split("|")[4].strip() == "✅"
+    assert row_docs.split("|")[4].strip() == "✅"
 
 
 def test_long_bullets_wrap_to_80_chars():

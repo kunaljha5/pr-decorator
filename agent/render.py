@@ -10,23 +10,11 @@ import json
 import re
 import textwrap
 
-from .models import OPTIONAL_SECTIONS, REQUIRED_SECTIONS, MRReport
+from .models import LIST_SECTIONS, OPTIONAL_SECTIONS, REQUIRED_SECTIONS, MRReport
 
 # Normalize whatever casing the model returns into the canonical display label.
 _RISK_LABELS = {"high": "HIGH", "medium": "Medium", "low": "LOW"}
 
-# Body sections rendered as bullet lists (Purpose/Ticket ID stay as prose).
-_LIST_SECTIONS = frozenset(
-    {
-        "Code Changes",
-        "Features Added",
-        "Bug Fixes",
-        "Breaking Changes",
-        "Chores",
-        "Docs & Linting",
-        "Risks",
-    }
-)
 # Each rendered bullet line (including the "- " marker) is wrapped to this width.
 _BULLET_WIDTH = 80
 # Leading bullet markers the model might emit, stripped before re-formatting.
@@ -86,20 +74,22 @@ def _risk_level(report: MRReport) -> str:
 
 
 def _summary_table(report: MRReport) -> list[str]:
-    """A compact single-row summary: which change types apply, plus risk level.
+    """A compact single-row summary: ticket id, which change types apply, risk.
 
-    Change types are derived from which sections the report actually populated,
-    so the table can never disagree with the sections rendered below it.
+    The Ticket ID leads as the first column; the change-type marks are derived
+    from which sections the report actually populated, so the table can never
+    disagree with the sections rendered below it.
     """
 
     def mark(*sections: str) -> str:
         return "✅" if any(report.sections.get(s, "").strip() for s in sections) else "—"
 
+    ticket = report.sections.get("Ticket ID", "").strip() or "—"
     # The "Chore" column covers both housekeeping and doc/lint changes.
     return [
-        "| Feature | Bug Fix | Chore | Breaking | Risk |",
-        "|---------|---------|-------|----------|------|",
-        f"| {mark('Features Added')} | {mark('Bug Fixes')} | "
+        "| Ticket | Feature | Bug Fix | Chore | Breaking | Risk |",
+        "|--------|---------|---------|-------|----------|------|",
+        f"| {ticket} | {mark('Features Added')} | {mark('Bug Fixes')} | "
         f"{mark('Chores', 'Docs & Linting')} | {mark('Breaking Changes')} | {_risk_level(report)} |",
     ]
 
@@ -107,25 +97,29 @@ def _summary_table(report: MRReport) -> list[str]:
 def to_markdown(report: MRReport) -> str:
     """Render the report as an MR-body Markdown string following the template.
 
-    Emits a compact summary table right after Purpose and Ticket ID, then each
-    section. Empty optional sections are skipped. Every block is followed by a
-    `---` rule (mirrors the dividers in `prompts/mr_template.txt`).
+    Emits the Purpose, then a compact summary table whose first column is the
+    Ticket ID, then each body section. Ticket ID is presented only in that table,
+    not as its own block. Empty optional sections are skipped. Every block is
+    followed by a `---` rule (mirrors the dividers in `prompts/mr_template.txt`).
     """
     lines = [f"# {report.title}".rstrip(), ""]
     for section in REQUIRED_SECTIONS:
+        # Ticket ID is surfaced in the summary table's first column, not its own block.
+        if section == "Ticket ID":
+            continue
         value = report.sections.get(section, "").strip()
         if not value and section in OPTIONAL_SECTIONS:
             continue
         lines.append(f"**{section}**")
-        if section in _LIST_SECTIONS:
+        if section in LIST_SECTIONS:
             lines.append(_format_bullets(value))
         else:
             lines.append(value or "_(none)_")
         lines.append("")
         lines.append("---")
         lines.append("")
-        # The summary table sits between the header fields and the body sections.
-        if section == "Ticket ID":
+        # The summary table sits right after Purpose, ahead of the body sections.
+        if section == "Purpose":
             lines += _summary_table(report)
             lines.append("")
             lines.append("---")
