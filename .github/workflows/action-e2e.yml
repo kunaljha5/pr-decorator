@@ -44,7 +44,7 @@ jobs:
       - name: Test AWS Bedrock access
         run: |
           echo "Testing Bedrock access..."
-          aws bedrock invoke-model \
+          aws bedrock-runtime invoke-model \
           --model-id ${{ vars.AWS_BEDROCK_MODEL_ID }} \
           --body '{"messages":[{"role":"user","content":[{"text":"Test connection"}]}],"max_tokens":10}' \
           --region ${{ vars.AWS_REGION }} \
