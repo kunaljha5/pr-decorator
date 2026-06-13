@@ -28,10 +28,10 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ vars.AWS_IAM_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
           role-session-name: GitHubActions-AutoPRDecorator
           aws-region: ${{ vars.AWS_REGION }}
-          role-external-id: ${{ vars.AWS_IAM_ROLE_EXTERNAL_ID }}
+#          role-external-id: ${{ vars.AWS_IAM_ROLE_EXTERNAL_ID }}
 
       # Test AWS access before proceeding
       - name: Test AWS Bedrock access
