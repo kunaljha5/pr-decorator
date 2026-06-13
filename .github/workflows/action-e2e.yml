@@ -33,6 +33,13 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 #          role-external-id: ${{ vars.AWS_IAM_ROLE_EXTERNAL_ID }}
 
+      - name: Upgrade AWS CLI
+        run: |
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip -q awscliv2.zip
+          sudo ./aws/install --update
+          aws --version
+
       # Test AWS access before proceeding
       - name: Test AWS Bedrock access
         run: |
