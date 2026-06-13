@@ -1,61 +1,84 @@
-name: Action E2E (manual)
+name: PR Decorator (Automatic)
 
-# End-to-end smoke test of the composite action against a real PR, run by a
-# maintainer on demand. Gated on workflow_dispatch ONLY — never on push/PR — so
-# real AWS credentials are never exposed to fork or untrusted-PR runs.
-#
-# Prerequisites: an OIDC role (ACTIONS_AWS_ROLE) with bedrock:InvokeModel on the
-# Nova Pro model, and an open PR number to decorate.
+# Automatically decorates PRs when they are opened, updated, or synchronized
+# Fetches all PR data from GitHub's built-in context - no manual input needed
 
 on:
-  workflow_dispatch:
-    inputs:
-      pr-number:
-        description: "PR number to decorate"
-        required: true
-      mode:
-        description: "body or comment"
-        required: false
-        default: "body"
-      overwrite:
-        description: "Replace the whole body/comment?"
-        required: false
-        default: "false"
-
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
 permissions:
   contents: read
   pull-requests: write
   id-token: write
 
 jobs:
-  e2e:
+  decorate-pr:
     runs-on: ubuntu-latest
+    # Only run on PRs from the same repository (not forks) for security
+    if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      # workflow_dispatch has no pull_request payload, so resolve the PR's base
-      # and head SHAs (and branch) explicitly and pass them to the action.
-      - name: Resolve PR refs
-        id: pr
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          PR="${{ github.event.inputs.pr-number }}"
-          gh pr view "$PR" --json baseRefOid,headRefOid,headRefName \
-            -q '"base=\(.baseRefOid)\nhead=\(.headRefOid)\nbranch=\(.headRefName)"' >> "$GITHUB_OUTPUT"
+      # Configure AWS credentials with External ID
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
+          role-session-name: GitHubActions-AutoPRDecorator
+          aws-region: ${{ AWS_REGION }}
+          role-external-id: ${{ secrets.AWS_IAM_ROLE_EXTERNAL_ID }}
 
-      - name: Run pr-decorator action (from source)
+      # Test AWS access before proceeding
+      - name: Test AWS Bedrock access
+        run: |
+          echo "Testing Bedrock access..."
+          aws bedrock invoke-model \
+            --model-id ${{ AWS_BEDROCK_MODEL_ID }} \
+            --body '{"messages":[{"role":"user","content":[{"text":"Test connection"}]}],"max_tokens":10}' \
+            --region ${{ AWS_REGION }} \
+            test-response.json
+          echo "✅ Bedrock access confirmed"
+
+      # Display PR information (for debugging)
+      - name: Display PR Information
+        run: |
+          echo "🔍 PR Information:"
+          echo "PR Number: ${{ github.event.pull_request.number }}"
+          echo "PR Title: ${{ github.event.pull_request.title }}"
+          echo "Base Branch: ${{ github.event.pull_request.base.ref }}"
+          echo "Head Branch: ${{ github.event.pull_request.head.ref }}"
+          echo "Base SHA: ${{ github.event.pull_request.base.sha }}"
+          echo "Head SHA: ${{ github.event.pull_request.head.sha }}"
+          echo "Author: ${{ github.event.pull_request.user.login }}"
+          echo "Repository: ${{ github.repository }}"
+
+      # Run the PR decorator action with automatic data
+      - name: Run pr-decorator action (automatic)
         uses: ./
         with:
           pr-decorator-version: source
-          pr-number: ${{ github.event.inputs.pr-number }}
-          base-sha: ${{ steps.pr.outputs.base }}
-          head-sha: ${{ steps.pr.outputs.head }}
-          head-ref: ${{ steps.pr.outputs.branch }}
-          aws-role-to-assume: ${{ vars.ACTIONS_AWS_ROLE }}
-          aws-region: us-east-1
-          region: ap-south-1
-          mode: ${{ github.event.inputs.mode }}
-          overwrite: ${{ github.event.inputs.overwrite }}
+          pr-number: ${{ github.event.pull_request.number }}
+          base-sha: ${{ github.event.pull_request.base.sha }}
+          head-sha: ${{ github.event.pull_request.head.sha }}
+          head-ref: ${{ github.event.pull_request.head.ref }}
+          aws-region: ${{ AWS_REGION }}
+          region: ${{ AWS_REGION }}
+          mode: "body"  # Default to decorating PR body
+          overwrite: "false"  # Default to not overwriting
+
+      # Optional: Add a comment to indicate the decoration is complete
+      - name: Add completion comment
+        uses: actions/github-script@v9
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: ${{ github.event.pull_request.number }},
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🤖 **PR Decorator Complete**\n\nThis PR has been automatically analyzed and decorated using AWS Bedrock Nova Pro model.\n\n_Triggered by: ${{ github.event_name }} on ${{ github.event.pull_request.head.ref }}_'
+            })
