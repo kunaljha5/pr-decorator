@@ -1,0 +1,19 @@
+{
+  "_comment": "PREVIEW SKELETON GitHub App manifest — see docs/github-app.md. Use with the App-manifest flow (https://docs.github.com/apps/creating-github-apps/setting-up-a-github-app/creating-a-github-app-from-a-manifest). Replace placeholder URLs before use.",
+  "name": "pr-decorator",
+  "url": "https://github.com/kunaljha5/pr-decorator",
+  "hook_attributes": {
+    "url": "https://YOUR_DEPLOYMENT/webhook",
+    "active": true
+  },
+  "redirect_url": "https://YOUR_DEPLOYMENT/callback",
+  "public": false,
+  "default_permissions": {
+    "pull_requests": "write",
+    "contents": "read",
+    "metadata": "read"
+  },
+  "default_events": [
+    "pull_request"
+  ]
+}

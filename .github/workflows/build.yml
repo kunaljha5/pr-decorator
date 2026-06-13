@@ -40,6 +40,32 @@ jobs:
         # medium+ severity issues; the run fails if any are found.
         run: uvx bandit -r -ll agent main.py
 
+      - name: Validate action.yml
+        # Cheap shape check so a broken composite-action manifest fails the
+        # pipeline before anyone references it. Confirms it parses and is a
+        # composite action; bash -n syntax-checks each embedded run script.
+        run: |
+          uv run --no-project --with pyyaml python - <<'PY'
+          import subprocess
+          import sys
+
+          import yaml
+
+          action = yaml.safe_load(open("action.yml"))
+          assert action.get("name"), "action.yml missing 'name'"
+          assert action["runs"]["using"] == "composite", "action.yml must be a composite action"
+          fails = 0
+          for step in action["runs"]["steps"]:
+              run = step.get("run")
+              if not run:
+                  continue
+              p = subprocess.run(["bash", "-n"], input=run, text=True, capture_output=True)
+              if p.returncode != 0:
+                  fails += 1
+                  print(f"::error::shell syntax error in step {step.get('name')!r}:\n{p.stderr}")
+          sys.exit(1 if fails else 0)
+          PY
+
   build:
     needs: lint
     runs-on: ubuntu-latest

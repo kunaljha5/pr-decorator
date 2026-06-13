@@ -1,0 +1,61 @@
+name: Action E2E (manual)
+
+# End-to-end smoke test of the composite action against a real PR, run by a
+# maintainer on demand. Gated on workflow_dispatch ONLY — never on push/PR — so
+# real AWS credentials are never exposed to fork or untrusted-PR runs.
+#
+# Prerequisites: an OIDC role (ACTIONS_AWS_ROLE) with bedrock:InvokeModel on the
+# Nova Pro model, and an open PR number to decorate.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr-number:
+        description: "PR number to decorate"
+        required: true
+      mode:
+        description: "body or comment"
+        required: false
+        default: "body"
+      overwrite:
+        description: "Replace the whole body/comment?"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # workflow_dispatch has no pull_request payload, so resolve the PR's base
+      # and head SHAs (and branch) explicitly and pass them to the action.
+      - name: Resolve PR refs
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR="${{ github.event.inputs.pr-number }}"
+          gh pr view "$PR" --json baseRefOid,headRefOid,headRefName \
+            -q '"base=\(.baseRefOid)\nhead=\(.headRefOid)\nbranch=\(.headRefName)"' >> "$GITHUB_OUTPUT"
+
+      - name: Run pr-decorator action (from source)
+        uses: ./
+        with:
+          pr-decorator-version: source
+          pr-number: ${{ github.event.inputs.pr-number }}
+          base-sha: ${{ steps.pr.outputs.base }}
+          head-sha: ${{ steps.pr.outputs.head }}
+          head-ref: ${{ steps.pr.outputs.branch }}
+          aws-role-to-assume: ${{ vars.ACTIONS_AWS_ROLE }}
+          aws-region: us-east-1
+          region: ap-south-1
+          mode: ${{ github.event.inputs.mode }}
+          overwrite: ${{ github.event.inputs.overwrite }}

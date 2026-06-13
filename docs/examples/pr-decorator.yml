@@ -1,0 +1,48 @@
+# Sample consumer workflow for the pr-decorator GitHub Action.
+#
+# Copy this into `.github/workflows/pr-decorator.yml` in YOUR repository.
+# It is kept under docs/examples/ here so it does NOT run in the pr-decorator
+# repo itself.
+#
+# Prerequisites:
+#   - An IAM role your repo can assume via GitHub OIDC, with bedrock:InvokeModel
+#     on the Nova Pro model (see README "GitHub Action").
+#   - Store the role ARN as a repo/org variable or secret (here: vars.PR_DECORATOR_ROLE).
+
+name: PR Decorator
+
+on:
+  pull_request:
+    # Note: 'edited' is intentionally omitted — the action edits the PR body,
+    # which would re-trigger 'edited' and risk a loop.
+    types: [opened, synchronize, reopened]
+
+# One run per PR; newer pushes cancel in-flight runs.
+concurrency:
+  group: pr-decorator-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read # checkout
+  pull-requests: write # update the PR body/comment
+  id-token: write # assume the AWS role via OIDC
+
+jobs:
+  decorate:
+    runs-on: ubuntu-latest
+    # Don't re-run on our own edits (belt-and-suspenders with the events above).
+    if: github.event.sender.login != 'github-actions[bot]'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so base...head can be diffed
+
+      - name: Decorate PR
+        uses: kunaljha5/pr-decorator@v1
+        with:
+          aws-role-to-assume: ${{ vars.PR_DECORATOR_ROLE }}
+          aws-region: us-east-1
+          region: ap-south-1 # Bedrock region (where Nova Pro is enabled)
+          # overwrite: "false"   # default: preserve manual edits outside the markers
+          # mode: "body"         # or "comment" for a sticky comment
+          # pr-decorator-version: "1.1.0"   # pin for reproducibility

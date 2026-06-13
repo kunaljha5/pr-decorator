@@ -43,9 +43,26 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.5",
 ]
+# Full-spec YAML parsing for .pr-decorator.yml. Optional: the package ships a
+# minimal vendored parser for the flat config schema and stays boto3-only
+# without this. Install via `pip install pr-decorator[yaml]` for nested/advanced
+# YAML support.
+yaml = [
+    "pyyaml>=6",
+]
+# Deps for the (preview) webhook-driven GitHub App under app/. The app/ package
+# is NOT shipped in the wheel (see [tool.setuptools] packages) — these extras
+# are for running the skeleton from a source checkout. See docs/github-app.md.
+app = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "pyjwt[crypto]>=2.8",
+    "httpx>=0.27",
+]
 
 [project.scripts]
 pr-decorator = "main:main"
+pr-decorator-merge = "agent.github:_cli"
 
 [build-system]
 requires = ["setuptools>=77"]
