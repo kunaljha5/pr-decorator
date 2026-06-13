@@ -48,7 +48,8 @@ jobs:
           --model-id ${{ vars.AWS_BEDROCK_MODEL_ID }} \
           --body '{"messages":[{"role":"user","content":[{"text":"Test connection"}]}],"max_tokens":10}' \
           --region ${{ vars.AWS_REGION }} \
-          --output-file test-response.json
+          --cli-binary-format raw-in-base64-out \
+          test-response.json
           echo "✅ Bedrock access confirmed"
 
       # Display PR information (for debugging)
