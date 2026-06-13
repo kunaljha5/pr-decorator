@@ -1,397 +1,300 @@
-# pr-decorator
+# PR Decorator
 
-Generate structured, high-quality Pull Request descriptions from git diffs using AWS Bedrock.
-
----
-
-## Overview
-
-`pr-decorator` is a CLI tool that analyzes your git changes and produces a standardized Pull Request (PR/MR) description using an agentic workflow.
-
-It follows a structured loop:
-
-```
-OBSERVE → PLAN → EXECUTE → VALIDATE → OUTPUT
-```
-
-The output is a clean, consistent PR description that is ready to paste into GitHub or GitLab.
+Automatically analyses and decorates pull requests using **Amazon Bedrock Nova Pro**. Triggered on every PR open, update, or reopen — no manual input needed.
 
 ---
 
-## Features
+## What it does
 
-* Generates structured PR descriptions from git diffs
-* Classifies changes into features, fixes, chores, and risks
-* Enforces a consistent PR template across teams
-* Uses AWS Bedrock for model inference
-* Supports Markdown and JSON output formats
-* Includes validation and retry logic
+When a PR is opened or updated, the workflow:
 
----
-
-## Why AWS Bedrock?
-
-This project uses AWS Bedrock as the inference backend.
-
-* Runs within your AWS environment (no external API dependency)
-* Supports multiple foundation models (Claude, Titan, Llama)
-* Uses IAM-based authentication (no API keys required)
-* Fits naturally into AWS-native workflows
+1. Authenticates with AWS using OIDC (no stored access keys)
+2. Calls Amazon Bedrock Nova Pro to analyse the PR diff
+3. Updates the PR body with a structured summary
+4. Posts a completion comment
 
 ---
 
-## Example Output
+## How authentication works
 
-### Input (git diff)
-
-```diff
-+ Added authentication middleware
-- Fixed token validation bug
-```
-
-### Output
-
-```md
-MR Title: Add authentication middleware and fix token validation
-
-MR Description:
-
-Purpose:
-Improve authentication reliability and security
-
-Summary:
-Ticket | Feature | Bug Fix | Chore | Breaking | Risk
-—      |   ✓     |   ✓     |       |          | LOW
-
-Code Changes:
-- Added middleware for request authentication
-- Updated token validation logic
-
-Bug Fixes:
-- Fixed incorrect token parsing edge case
-
-Risks:
-- Low risk; changes are isolated to auth flow
-```
-
----
-
-## Installation
-
-### Using pip
-
-```bash
-pip install pr-decorator
-```
-
-### Using uv
-
-```bash
-uv pip install pr-decorator
-```
-
-### Using pipx (recommended)
-
-```bash
-pipx install pr-decorator
-```
+This setup uses **OpenID Connect (OIDC)**. GitHub generates a short-lived token per workflow run. AWS trusts that token and returns temporary credentials — no `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` stored anywhere.
 
 ---
 
 ## Prerequisites
 
-* Python 3.10+
-* Git installed
-* AWS credentials with Bedrock access
-* Access to Amazon Nova Pro model in Bedrock
+- AWS account with Bedrock access enabled for **Amazon Nova Pro**
+- Admin access to your GitHub repository
+- AWS CLI installed locally (for setup commands)
 
 ---
 
-## Configuration
+## Step 1 — AWS setup
 
-Set optional environment variables:
+### 1a. Register GitHub as an identity provider
+
+Run this once per AWS account:
 
 ```bash
-export BEDROCK_REGION=ap-south-1
-export BEDROCK_MODEL_ID=apac.amazon.nova-pro-v1:0
+aws iam create-open-id-connect-provider \
+  --url https://token.actions.githubusercontent.com \
+  --client-id-list sts.amazonaws.com
 ```
 
-Authentication uses the standard AWS credential chain.
-
-### Config file (`.pr-decorator.yml`)
-
-Pin per-repository defaults in a `.pr-decorator.yml` at the repo root (auto-discovered
-from the working directory upward; override with `--config PATH`):
-
-```yaml
-# .pr-decorator.yml — all keys optional
-model: apac.amazon.nova-pro-v1:0
-region: ap-south-1
-format: markdown          # markdown | json
-context_lines: 100000
-ticket_id: PROJ-123       # usually inferred from the branch instead
-max_file_chars: 12000     # per-file prompt cap
-max_total_chars: 120000   # total prompt cap
-```
-
-Precedence (highest wins): **CLI flag → `.pr-decorator.yml` → environment variable →
-built-in default**. Unknown keys and bad values are warned about and ignored, never fatal.
-
-The file is parsed by a small built-in parser, so the package stays dependency-light
-(boto3 only). The schema is flat (`key: value`); for nested/advanced YAML install the
-optional extra: `pip install "pr-decorator[yaml]"` (uses PyYAML when present).
+> **Note:** If you get `EntityAlreadyExists`, the provider is already registered — skip this step.
 
 ---
 
-## Usage
+### 1b. Create the IAM trust policy
 
-Run inside a git repository:
-
-```bash
-pr-decorator
-```
-
-### Common examples
-
-```bash
-# Custom range
-pr-decorator --range origin/main...HEAD
-
-# Pipe diff
-git diff origin/main | pr-decorator
-
-# Use file input
-pr-decorator --diff-file changes.diff
-
-# JSON output
-pr-decorator --format json
-```
-
----
-
-## Output
-
-A successful run:
-
-* Prints the PR description to stdout
-* Writes output to `output/mr_report.md` (or `.json`)
-* Writes execution trace to `output/agent_trace.json`
-
----
-
-## GitHub Action
-
-Run pr-decorator automatically on every pull request and write the description
-straight into the PR body — no manual CLI step. Copy
-[`docs/examples/pr-decorator.yml`](docs/examples/pr-decorator.yml) into
-`.github/workflows/` in your repo:
-
-```yaml
-name: PR Decorator
-on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-permissions:
-  contents: read
-  pull-requests: write   # update the PR body
-  id-token: write        # assume the AWS role via OIDC
-jobs:
-  decorate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0           # full history so base...head can be diffed
-      - uses: kunaljha5/pr-decorator@v1
-        with:
-          aws-role-to-assume: ${{ vars.PR_DECORATOR_ROLE }}
-          region: ap-south-1       # Bedrock region (where Nova Pro is enabled)
-```
-
-### Inputs
-
-| Input | Default | Description |
-|---|---|---|
-| `model` | CLI/env default | Bedrock model id. |
-| `region` | env / `ap-south-1` | AWS region for Bedrock. |
-| `format` | `markdown` | `markdown` or `json`. |
-| `context-lines` | `100000` | `git diff --unified` context lines. |
-| `config-file` | auto-discover | Path to a `.pr-decorator.yml`. |
-| `aws-role-to-assume` | — | IAM role ARN assumed via OIDC (needs `id-token: write`). |
-| `aws-region` | `us-east-1` | Region used for OIDC credential exchange. |
-| `github-token` | `${{ github.token }}` | Token to read/update the PR. |
-| `overwrite` | `false` | `true` replaces the whole body; else merge within markers. |
-| `mode` | `body` | `body` (edit PR body) or `comment` (sticky comment). |
-| `markers` | `pr-decorator` | Marker namespace → `<!-- {markers}:start/end -->`. |
-| `pr-decorator-version` | latest | Pin a release for reproducibility; `source` installs the action checkout. |
-
-**Outputs:** `report-path`, `risk-level`, `updated`.
-
-### No-clobber updates
-
-By default the action writes the generated description **between markers**
-(`<!-- pr-decorator:start -->` … `<!-- pr-decorator:end -->`). Anything you type
-outside that block is preserved on re-runs; only the block is refreshed. Set
-`overwrite: true` to replace the entire body instead. The PR title is never changed.
-
-### AWS authentication (OIDC, recommended)
-
-The action assumes an IAM role via GitHub's OIDC provider — no long-lived keys in
-secrets. Create a role whose trust policy allows `token.actions.githubusercontent.com`:
+Create `trust-policy.json`:
 
 ```json
 {
-  "Effect": "Allow",
-  "Principal": { "Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com" },
-  "Action": "sts:AssumeRoleWithWebIdentity",
-  "Condition": {
-    "StringEquals": { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" },
-    "StringLike": { "token.actions.githubusercontent.com:sub": "repo:<OWNER>/<REPO>:*" }
-  }
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {
+      "Federated": "arn:aws:iam::<YOUR_ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"
+    },
+    "Action": "sts:AssumeRoleWithWebIdentity",
+    "Condition": {
+      "StringEquals": {
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+      },
+      "StringLike": {
+        "token.actions.githubusercontent.com:sub": "repo:{YOUR_GITHUB_USERNAME||YOUR_GITHUB_ORG}/YOUR_REPO_NAME:*"
+      }
+    }
+  }]
 }
 ```
 
-Attach a permissions policy granting `bedrock:InvokeModel` on the Nova Pro model, then
-pass the role ARN as `aws-role-to-assume` (e.g. via a repo variable).
+Replace:
 
-### Notes & limitations
+| Placeholder            | Replace with                           |
+|------------------------|----------------------------------------|
+| `YOUR_ACCOUNT_ID`      | Your 12-digit AWS account ID           |
+| `YOUR_GITHUB_USERNAME` | Your GitHub username name              |
+| `YOUR_GITHUB_ORG`      | Your GitHub org name                   |
+| `YOUR_REPO_NAME`       | Exact repository name (case-sensitive) |
 
-* **Forks:** pull requests from forks get a read-only token and no OIDC, so the body
-  update and AWS auth won't work on the plain `pull_request` event. Use
-  `pull_request_target` if you need fork coverage — pr-decorator only *reads* the diff
-  text and never executes PR code, but review the security implications first.
-* **Avoid loops:** the action edits the PR body, so don't subscribe to the `edited`
-  event. Updates are idempotent (re-running yields an identical body), and the sample
-  workflow also guards on the sender being the bot.
 
 ---
 
-## How It Works
-
-The system follows an agent loop:
-
-### 1. Observe
-
-* Reads git diff, commits, branch, and metadata
-
-### 2. Plan
-
-* Classifies changes (feature, fix, chore, docs)
-* Determines required PR sections
-
-### 3. Execute
-
-* Calls AWS Bedrock to generate content
-
-### 4. Validate
-
-* Ensures format, completeness, and correctness
-* Retries failed sections
-
-### 5. Output
-
-* Produces final PR description
-
----
-
-## PR Template
-
-The generated output follows a fixed structure:
-
-* Title
-* Purpose
-* Summary table
-* Code Changes
-* Features Added
-* Bug Fixes
-* Breaking Changes
-* Chores
-* Docs & Linting
-* Risks
-
-Empty sections are automatically omitted.
-
----
-
-## Architecture
-
-```
-Git Diff → CLI → Agent Loop → AWS Bedrock → Validation → Output
-```
-
----
-
-## Development
-
-Clone the repository and install in editable mode:
+### 1c. Create the IAM role
 
 ```bash
-uv venv --python 3.12 .venv
-uv pip install -e ".[dev]"
+aws iam create-role \
+  --role-name pr-decorator-bedrock-role \
+  --assume-role-policy-document file://trust-policy.json \
+  --description "Role for GitHub Actions PR Decorator"
 ```
 
-Run:
+---
+
+### 1d. Create and attach the Bedrock access policy
+
+Create `bedrock-policy.json`:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "AllowNovaModelsApSouth1Only",
+            "Effect": "Allow",
+            "Action": [
+                "bedrock:InvokeModel"
+            ],
+            "Resource": [
+                "arn:aws:bedrock:ap-*::foundation-model/amazon.nova-lite-v1:0",
+                "arn:aws:bedrock:ap-*::foundation-model/amazon.nova-pro-v1:0"
+            ]
+        }
+    ]
+}
+```
+
+Attach it:
 
 ```bash
-pr-decorator --help
-ruff check .
-pytest
+aws iam create-policy \
+  --policy-name BedrockProfilePolicy \
+  --policy-document file://bedrock-policy.json
+
+aws iam attach-role-policy \
+  --role-name pr-decorator-bedrock-role \
+  --policy-arn arn:aws:iam::<YOUR_ACCOUNT_ID>:policy/BedrockProfilePolicy
 ```
 
 ---
 
-## CI/CD
+### 1e. Enable Nova Pro model access
 
-The project includes GitHub Actions for:
-
-* Building package artifacts
-* Validating installation
-* Publishing to PyPI (via trusted publishing)
-* Creating GitHub releases
+1. Go to the [Amazon Bedrock console](https://console.aws.amazon.com/bedrock)
+2. Click **Model access** in the left navigation
+3. Find **Amazon Nova Pro** and click **Request access**
+4. Wait for approval (usually instant)
 
 ---
 
-## Publishing
+## Step 2 — GitHub setup
 
-To release a new version:
+### 2a. Add repository secret
+
+Go to **Settings → Secrets and variables → Actions → New repository secret**:
+
+| Secret name        | Value                                                           |
+|--------------------|-----------------------------------------------------------------|
+| `AWS_IAM_ROLE_ARN` | `arn:aws:iam::<YOUR_ACCOUNT_ID>:role/pr-decorator-bedrock-role` |
+
+### 2b. Add repository variables
+
+On the same page, click the **Variables** tab:
+
+i.e apac preferred region set 
+
+| Variable name          | Value                       |
+|------------------------|-----------------------------|
+| `AWS_REGION`           | `ap-south-1`                |
+| `AWS_BEDROCK_MODEL_ID` | `apac.amazon.nova-pro-v1:0` |
+
+### 2c. Add the workflow file
+
+Create `.github/workflows/pr-decorator.yml`:
+
+```yaml
+name: PR Decorator (Automatic)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write   # required for OIDC
+
+jobs:
+  decorate-pr:
+    runs-on: ubuntu-latest
+    # Block fork PRs — they cannot access secrets
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
+          role-session-name: GitHubActions-AutoPRDecorator
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # ubuntu-latest ships with CLI v1 which lacks bedrock-runtime
+      - name: Upgrade AWS CLI
+        run: |
+          curl -s https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o awscliv2.zip
+          unzip -q awscliv2.zip
+          sudo ./aws/install --update
+
+      - name: Test Bedrock access
+        run: |
+          aws bedrock-runtime invoke-model \
+            --model-id ${{ vars.AWS_BEDROCK_MODEL_ID }} \
+            --body '{"messages":[{"role":"user","content":[{"text":"ping"}]}]}' \
+            --region ${{ vars.AWS_REGION }} \
+            --cli-binary-format raw-in-base64-out \
+            test-response.json
+          echo "Bedrock access confirmed"
+
+      - name: Run PR decorator
+        uses: ./
+        with:
+          pr-decorator-version: source
+          pr-number: ${{ github.event.pull_request.number }}
+          base-sha: ${{ github.event.pull_request.base.sha }}
+          head-sha: ${{ github.event.pull_request.head.sha }}
+          head-ref: ${{ github.event.pull_request.head.ref }}
+          aws-region: ${{ vars.AWS_REGION }}
+          region: ${{ vars.AWS_REGION }}
+          mode: "body"
+          overwrite: "false"
+
+      - name: Add completion comment (optional)
+        uses: actions/github-script@v9
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: ${{ github.event.pull_request.number }},
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🤖 **PR Decorator Complete**\n\nAnalysed using AWS Bedrock Nova Pro (APAC).\n\n_Triggered by: ${{ github.event_name }} on ${{ github.event.pull_request.head.ref }}_'
+            })
+```
+
+---
+
+## Step 3 — Verify
+
+Create a test PR to trigger the workflow:
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+git checkout -b test/bedrock-setup
+echo "test" >> README.md
+git add README.md
+git commit -m "test: trigger PR decorator"
+git push origin test/bedrock-setup
 ```
 
-This triggers automated build and publish workflows.
+Open a PR targeting `main`. In the **Actions** tab, a successful run shows all steps green, the PR body updated, and a completion comment posted.
 
 ---
 
-## Requirements
+## Troubleshooting
 
-* Stateless execution per run
-* Strict adherence to PR template
-* Retry logic for Bedrock failures
-* Output validation before completion
+| Error                                                     | Cause                                                           | Fix                                                                                                                |
+|-----------------------------------------------------------|-----------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------|
+| `Not authorized to perform sts:AssumeRoleWithWebIdentity` | Trust policy `sub` condition mismatch, or OIDC provider missing | Verify provider exists: `aws iam list-open-id-connect-providers`. Check repo name in trust policy matches exactly. |
+| `Found invalid choice 'invoke-model' under bedrock`       | Wrong CLI namespace                                             | Use `aws bedrock-runtime invoke-model`, not `aws bedrock invoke-model`                                             |
+| `AccessDenied` on `bedrock:InvokeModel`                   | Policy not attached, or wrong resource ARN                      | Run `aws iam list-attached-role-policies --role-name pr-decorator-bedrock-role`                                    |
+| Model access denied                                       | Nova Pro not enabled                                            | Go to Bedrock console → Model access → enable Amazon Nova Pro                                                      |
+
+### Verify your setup
+
+```bash
+# Check OIDC provider exists
+aws iam list-open-id-connect-providers
+
+# Check trust policy
+aws iam get-role \
+  --role-name pr-decorator-bedrock-role \
+  --query Role.AssumeRolePolicyDocument
+
+# Check attached policies
+aws iam list-attached-role-policies \
+  --role-name pr-decorator-bedrock-role
+
+# Test Bedrock directly
+aws bedrock-runtime invoke-model \
+  --model-id apac.amazon.nova-pro-v1:0 \
+  --body '{"messages":[{"role":"user","content":[{"text":"hello"}]}]}' \
+  --region ap-south-1 \
+  --cli-binary-format raw-in-base64-out \
+  response.json && cat response.json
+```
 
 ---
 
-## GitHub App (preview)
+## Security notes
 
-A webhook-driven GitHub App is scaffolded under [`app/`](app/) and documented in
-[`docs/github-app.md`](docs/github-app.md). It would react to PR webhooks server-side
-and reuse the exact decoration core in-process. **It is a non-deployed preview skeleton**,
-not a running service — see the doc for the architecture, auth flow, and rollout notes.
-
----
-
-## Roadmap
-
-* ✅ GitHub Action integration (see "GitHub Action")
-* ✅ PR auto-posting via GitHub API (the Action writes the PR body)
-* 🚧 GitHub App (preview skeleton — see "GitHub App")
-* VS Code extension
-* Support for additional models
-
----
-
-## License
-
-MIT
+- Fork PRs are blocked — the `if:` condition prevents forks from accessing secrets
+- OIDC tokens are short-lived (15 min) and scoped to a single workflow run
+- The IAM role is limited to `bedrock:InvokeModel` only — no broader AWS access
+- The trust policy `sub` condition locks the role to this specific repository
