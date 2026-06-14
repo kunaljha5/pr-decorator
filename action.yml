@@ -1,0 +1,228 @@
+name: PR Decorator
+description: >-
+  Generate a standardized Merge-Request description from a pull request's diff
+  (via AWS Bedrock) and write it back to the PR body or a sticky comment.
+author: kunaljha5
+branding:
+  icon: edit-3
+  color: purple
+
+inputs:
+  model:
+    description: "Bedrock model id (default: the CLI/env default, Amazon Nova Pro)."
+    required: false
+    default: ""
+  region:
+    description: "AWS region for Bedrock (default: BEDROCK_REGION env or ap-south-1)."
+    required: false
+    default: ""
+  format:
+    description: "Output format written into the PR: markdown or json."
+    required: false
+    default: "markdown"
+  context-lines:
+    description: "git diff --unified context lines (default: 100000 = whole-file)."
+    required: false
+    default: ""
+  config-file:
+    description: "Path to a .pr-decorator.yml (default: auto-discover from repo root)."
+    required: false
+    default: ""
+  aws-role-to-assume:
+    description: >-
+      IAM role ARN to assume via GitHub OIDC for Bedrock access. Leave empty to
+      rely on ambient credentials (e.g. for a dry run). Requires the calling job
+      to set `permissions: id-token: write`.
+    required: false
+    default: ""
+  aws-region:
+    description: "Region used by aws-actions/configure-aws-credentials for OIDC."
+    required: false
+    default: "us-east-1"
+  github-token:
+    description: "Token used to read and update the PR (needs pull-requests: write)."
+    required: false
+    default: ${{ github.token }}
+  overwrite:
+    description: "true = replace the whole PR body/comment; false = merge within markers."
+    required: false
+    default: "false"
+  mode:
+    description: "Where to write the result: 'body' (edit PR body) or 'comment' (sticky comment)."
+    required: false
+    default: "body"
+  markers:
+    description: "Marker namespace; produces <!-- {markers}:start/end --> around the block."
+    required: false
+    default: "pr-decorator"
+  pr-decorator-version:
+    description: >-
+      Version of the pr-decorator package to install. Empty installs the latest
+      release; pin a version (e.g. "1.1.0") for reproducibility; "source" installs
+      this action's own checkout (for testing unreleased changes).
+    required: false
+    default: ""
+  # PR coordinates — default to the pull_request event payload, so on a
+  # pull_request trigger you set none of these. Override them to drive the
+  # action from another event (e.g. a manual workflow_dispatch e2e run).
+  pr-number:
+    description: "PR number to update (default: from the pull_request event)."
+    required: false
+    default: ${{ github.event.pull_request.number }}
+  base-sha:
+    description: "Base commit to diff from (default: pull_request base SHA)."
+    required: false
+    default: ${{ github.event.pull_request.base.sha }}
+  head-sha:
+    description: "Head commit to diff to (default: pull_request head SHA)."
+    required: false
+    default: ${{ github.event.pull_request.head.sha }}
+  head-ref:
+    description: "Head branch name, used to infer the ticket id (default: pull_request head ref)."
+    required: false
+    default: ${{ github.event.pull_request.head.ref }}
+
+outputs:
+  report-path:
+    description: "Path to the generated report file in the runner temp dir."
+    value: ${{ steps.decorate.outputs.report-path }}
+  risk-level:
+    description: "Risk level parsed from the report (HIGH/Medium/LOW), best-effort."
+    value: ${{ steps.decorate.outputs.risk-level }}
+  updated:
+    description: "true if the PR body/comment was changed this run."
+    value: ${{ steps.update-body.outputs.updated || steps.update-comment.outputs.updated }}
+
+runs:
+  using: composite
+  steps:
+    - name: Guard — PR coordinates present
+      shell: bash
+      run: |
+        if [ -z "${{ inputs.pr-number }}" ] || [ -z "${{ inputs.base-sha }}" ] || [ -z "${{ inputs.head-sha }}" ]; then
+          echo "::error::No PR coordinates. Run on a pull_request event, or pass pr-number/base-sha/head-sha."
+          exit 1
+        fi
+
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v8.1.0
+      with:
+        python-version: "3.12"
+
+    - name: Resolve install source
+      shell: bash
+      env:
+        VERSION: ${{ inputs.pr-decorator-version }}
+      run: |
+        if [ "$VERSION" = "source" ]; then
+          echo "PRD_FROM=${{ github.action_path }}" >> "$GITHUB_ENV"
+        elif [ -z "$VERSION" ]; then
+          echo "PRD_FROM=pr-decorator" >> "$GITHUB_ENV"
+        else
+          echo "PRD_FROM=pr-decorator==$VERSION" >> "$GITHUB_ENV"
+        fi
+
+    - name: Configure AWS credentials (OIDC)
+      if: inputs.aws-role-to-assume != ''
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.aws-role-to-assume }}
+        aws-region: ${{ inputs.aws-region }}
+
+    - name: Compute diff range
+      id: range
+      shell: bash
+      env:
+        BASE_SHA: ${{ inputs.base-sha }}
+        HEAD_SHA: ${{ inputs.head-sha }}
+      run: |
+        # The base SHA must be present to diff against. Consumers should check
+        # out with fetch-depth: 0; this fetch is a best-effort fallback.
+        git fetch --no-tags origin "$BASE_SHA" 2>/dev/null || true
+        echo "range=${BASE_SHA}...${HEAD_SHA}" >> "$GITHUB_OUTPUT"
+
+    - name: Decorate the pull request
+      id: decorate
+      shell: bash
+      env:
+        RANGE: ${{ steps.range.outputs.range }}
+        BRANCH: ${{ inputs.head-ref }}
+        FORMAT: ${{ inputs.format }}
+        MODEL: ${{ inputs.model }}
+        REGION: ${{ inputs.region }}
+        CONFIG_FILE: ${{ inputs.config-file }}
+        CONTEXT_LINES: ${{ inputs.context-lines }}
+      run: |
+        ARGS=(--range "$RANGE" --no-write --format "$FORMAT")
+        [ -n "$BRANCH" ] && ARGS+=(--branch "$BRANCH")
+        [ -n "$MODEL" ] && ARGS+=(--model "$MODEL")
+        [ -n "$REGION" ] && ARGS+=(--region "$REGION")
+        [ -n "$CONFIG_FILE" ] && ARGS+=(--config "$CONFIG_FILE")
+        [ -n "$CONTEXT_LINES" ] && ARGS+=(--context-lines "$CONTEXT_LINES")
+
+        BODY="$RUNNER_TEMP/mr_body.md"
+        uvx --from "$PRD_FROM" pr-decorator "${ARGS[@]}" > "$BODY"
+
+        echo "report-path=$BODY" >> "$GITHUB_OUTPUT"
+        RISK=$(grep -oE 'HIGH|Medium|LOW' "$BODY" | head -1 || true)
+        echo "risk-level=${RISK:-LOW}" >> "$GITHUB_OUTPUT"
+
+    - name: Update PR body
+      id: update-body
+      if: inputs.mode == 'body'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        GH_REPO: ${{ github.repository }}
+        PR: ${{ inputs.pr-number }}
+        MARKERS: ${{ inputs.markers }}
+        OVERWRITE: ${{ inputs.overwrite }}
+      run: |
+        gh pr view "$PR" --json body -q '.body // ""' > "$RUNNER_TEMP/existing.md"
+        FLAGS=()
+        [ "$OVERWRITE" = "true" ] && FLAGS+=(--overwrite)
+        uvx --from "$PRD_FROM" pr-decorator-merge \
+          --existing-file "$RUNNER_TEMP/existing.md" \
+          --generated-file "$RUNNER_TEMP/mr_body.md" \
+          --markers "$MARKERS" "${FLAGS[@]}" \
+          --out-file "$RUNNER_TEMP/merged.md"
+        if cmp -s "$RUNNER_TEMP/existing.md" "$RUNNER_TEMP/merged.md"; then
+          echo "PR body already up to date; nothing to change."
+          echo "updated=false" >> "$GITHUB_OUTPUT"
+        else
+          gh pr edit "$PR" --body-file "$RUNNER_TEMP/merged.md"
+          echo "updated=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Update sticky comment
+      id: update-comment
+      if: inputs.mode == 'comment'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        GH_REPO: ${{ github.repository }}
+        PR: ${{ inputs.pr-number }}
+        MARKERS: ${{ inputs.markers }}
+        OVERWRITE: ${{ inputs.overwrite }}
+      run: |
+        START="<!-- ${MARKERS}:start -->"
+        CID=$(gh api "repos/$GH_REPO/issues/$PR/comments" --paginate \
+          -q "map(select(.body | contains(\"$START\"))) | .[0].id // empty")
+        if [ -n "$CID" ]; then
+          gh api "repos/$GH_REPO/issues/comments/$CID" -q '.body' > "$RUNNER_TEMP/existing.md"
+        else
+          : > "$RUNNER_TEMP/existing.md"
+        fi
+        FLAGS=()
+        [ "$OVERWRITE" = "true" ] && FLAGS+=(--overwrite)
+        uvx --from "$PRD_FROM" pr-decorator-merge \
+          --existing-file "$RUNNER_TEMP/existing.md" \
+          --generated-file "$RUNNER_TEMP/mr_body.md" \
+          --markers "$MARKERS" "${FLAGS[@]}" \
+          --out-file "$RUNNER_TEMP/merged.md"
+        if [ -n "$CID" ]; then
+          gh api -X PATCH "repos/$GH_REPO/issues/comments/$CID" -F body=@"$RUNNER_TEMP/merged.md" >/dev/null
+        else
+          gh pr comment "$PR" --body-file "$RUNNER_TEMP/merged.md"
+        fi
+        echo "updated=true" >> "$GITHUB_OUTPUT"

@@ -45,7 +45,9 @@ The loop is the core. Each phase is a module under `agent/`, wired together by `
   `converse` API. Builds the user prompt from the plan + full file content, parses the model's
   JSON response into an `MRReport`. The boto3 client is created **lazily** so the loop and tests
   run without AWS creds. System prompt is loaded from `prompts/mr_template.txt` (as packaged
-  data, with a source-checkout fallback).
+  data, with a source-checkout fallback). The content caps (`max_file_chars`/`max_total_chars`)
+  are **instance attributes** (default from `MR_MAX_FILE_CHARS`/`MR_MAX_TOTAL_CHARS` env, else
+  built-in) so `.pr-decorator.yml` can drive them; `_render_files` takes them as args.
 - **`agent/validate.py`** — the second OBSERVE: checks required sections are populated, title is
   imperative mood, ticket id present (warn-only), and that list sections don't leak file
   names/paths. A leak is a **warning, not an error** (it never flips the exit code — that still
@@ -63,6 +65,18 @@ The loop is the core. Each phase is a module under `agent/`, wired together by `
   Body sections in `LIST_SECTIONS` (everything except Purpose/Ticket ID) render as Markdown bullet
   lists, each line hard-wrapped to ≤80 chars via `_format_bullets`/`_as_bullets` — robust to whatever bullet
   style (or prose blob) the model returns.
+- **`agent/config.py`** — loads an optional `.pr-decorator.yml` (auto-discovered cwd→root, or
+  `--config`). `main._resolve_settings` layers it with precedence **CLI flag > config > env >
+  built-in default** (CLI defaults for `--format`/`--context-lines` are now `None` so "unset" is
+  distinguishable). Unknown keys / bad values are **warnings, never fatal**; a missing file is
+  fine, a malformed one raises `ConfigError` (CLI exit 2). YAML parsing prefers PyYAML if present
+  (optional `[yaml]` extra) but falls back to a **vendored flat-key parser** so the package stays
+  boto3-only — the schema is intentionally flat.
+- **`agent/github.py`** — GitHub PR-writing helpers, **shared by the Action and the App** so the
+  two update PRs identically. `merge_pr_body(existing, generated, *, overwrite, start_marker,
+  end_marker)` folds generated content between `<!-- pr-decorator:start/end -->` markers
+  (no-clobber: text outside the block survives; `overwrite=True` replaces wholesale; idempotent).
+  `_cli` backs the `pr-decorator-merge` console script that `action.yml` shells out to.
 
 ### Control-flow rules baked into `loop.py` (don't break these)
 
@@ -91,6 +105,25 @@ The loop is the core. Each phase is a module under `agent/`, wired together by `
 - Content size caps: `MR_MAX_FILE_CHARS` (default 12000) and `MR_MAX_TOTAL_CHARS` (default
   120000) bound prompt size; over-budget files are noted, never silently dropped.
 
+## GitHub integration
+
+Two delivery surfaces wrap the same core (`loop.run` → `render.to_markdown` →
+`github.merge_pr_body`) — keep all PR-writing logic in `agent/github.py`, never duplicated.
+
+- **`action.yml`** (repo root) — a **composite** Action so `kunaljha5/pr-decorator@v1` resolves.
+  Runs via `uvx --from <pkg-or-path>` (no PATH juggling, matches the `uvx` style in `build.yml`):
+  setup-uv → optional OIDC creds (`aws-actions/configure-aws-credentials@v4`, guarded on
+  `aws-role-to-assume`) → compute `base...head` range from PR-coordinate inputs → run the CLI
+  `--no-write` capturing stdout → merge into the PR body/comment via `pr-decorator-merge` + `gh`.
+  PR coordinates (`pr-number`/`base-sha`/`head-sha`/`head-ref`) are **inputs that default to the
+  `pull_request` event payload**, so the Action also works off other events (the `action-e2e.yml`
+  `workflow_dispatch` run passes them explicitly). Don't subscribe to the `edited` event (loop).
+- **`docs/examples/pr-decorator.yml`** — the copy-paste consumer workflow; lives under `docs/`
+  (not `.github/workflows/`) so it never runs in *this* repo.
+- **`app/`** — **preview skeleton only**, excluded from the wheel (not in `[tool.setuptools]
+  packages`) and from the test suite. `verify_signature` (HMAC) is real; auth/HTTP are stubs that
+  lazily import the `[app]` extra. Architecture in `docs/github-app.md`.
+
 ## Development
 
 These commands are for working **on** the package from a source checkout. End users install the
@@ -111,17 +144,20 @@ git diff origin/main | .venv/bin/python main.py --format markdown
 .venv/bin/python main.py --diff-file changes.diff --ticket-id PRD-1 --format json
 # Useful flags: --model --region --format{markdown,json} --no-write --context-lines N
 
-# Lint
+# Lint + format check + security scan (the CI `lint` gate — run before pushing)
 .venv/bin/ruff check .
-.venv/bin/ruff format
+.venv/bin/ruff format          # or `ruff format --check .` to match CI
+uvx bandit -r -ll agent main.py   # CI scans shipped source only (skips tests/)
 
 # Tests (pytest, all use a fake/stub executor — no AWS or network needed)
 .venv/bin/pytest
 .venv/bin/pytest tests/test_loop.py::test_loop_returns_valid_report   # single test
 ```
 
-> Note: the README's "Local Setup" section states a policy of no unit tests, but a working
-> `tests/` suite exists and runs offline against stubbed executors. Run it.
+> Note: a working `tests/` suite exists and runs offline against stubbed executors — run it.
+> (CI does not run pytest; the `lint` gate is ruff + bandit only, so tests are your local
+> responsibility.) `bandit` lives in the `[dependency-groups] dev` group, separate from the
+> `[project.optional-dependencies] dev` extras (`pytest`, `ruff`) installed by `.[dev]`.
 
 A successful CLI run exits **0** (non-zero = a required section failed validation), prints the
 decorated MR, and writes `output/mr_report.{md,json}` + `output/agent_trace.json`.
@@ -134,7 +170,9 @@ payload, then call `loop.run(diff, executor=...)`. See README "Validate it worke
 
 ## CI / release
 
-`.github/workflows/build.yml` builds wheel+sdist, runs `twine check`, and verifies a clean-venv
-wheel install exposes the `pr-decorator` CLI and ships the packaged prompt. On `v*` tags it
+`.github/workflows/build.yml` runs a `lint` gate first (ruff check + `ruff format --check` +
+`bandit -r -ll`); `build` `needs: lint`, so any lint/format/security regression fails the
+pipeline before packaging. `build` then builds wheel+sdist, runs `twine check`, and verifies a
+clean-venv wheel install exposes the `pr-decorator` CLI and ships the packaged prompt. On `v*` tags it
 publishes to PyPI via **Trusted Publishing** (OIDC, no stored tokens) and cuts a GitHub Release.
 Release = bump `version` in `pyproject.toml`, then `git tag vX.Y.Z && git push origin vX.Y.Z`.

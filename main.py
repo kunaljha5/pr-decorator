@@ -16,7 +16,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from agent import loop, render
+from agent import config, loop, render
 from agent.execute import BedrockExecutor, MissingCredentialsError
 
 _OUTPUT_DIR = Path(__file__).resolve().parent / "output"
@@ -96,9 +96,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--branch", help="Branch name (used to infer ticket id).")
     parser.add_argument("--ticket-id", help="Explicit ticket id; overrides inference.")
     parser.add_argument(
+        "--config",
+        help="Path to a .pr-decorator.yml config (default: auto-discover from cwd upward).",
+    )
+    parser.add_argument(
         "--format",
         choices=("markdown", "json"),
-        default="markdown",
+        default=None,
         help="Output format for the decorated MR (default: markdown).",
     )
     parser.add_argument(
@@ -117,11 +121,41 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--context-lines",
         type=int,
-        default=100000,
+        default=None,
         help="Context lines for `git diff --unified` on --range; the large "
         "default includes whole-file content for modified files (default: 100000).",
     )
     return parser
+
+
+# Built-in defaults applied when neither a CLI flag nor the config file sets a value.
+_DEFAULT_FORMAT = "markdown"
+_DEFAULT_CONTEXT_LINES = 100000
+
+
+def _resolve_settings(args: argparse.Namespace, cfg: config.Config) -> dict:
+    """Resolve effective settings with precedence: CLI flag > config file > default.
+
+    `model`/`region`/`max_*_chars` stay None when unset so `BedrockExecutor`
+    applies its own env-or-builtin default (keeping env *below* the config file).
+    `format`/`context_lines` get a concrete built-in default here because the CLI
+    no longer defaults them (None now means "unset", not "markdown"/100000).
+    """
+    return {
+        "model": args.model or cfg.model,
+        "region": args.region or cfg.region,
+        "ticket_id": args.ticket_id or cfg.ticket_id,
+        "format": args.format or cfg.format or _DEFAULT_FORMAT,
+        "context_lines": (
+            args.context_lines
+            if args.context_lines is not None
+            else cfg.context_lines
+            if cfg.context_lines is not None
+            else _DEFAULT_CONTEXT_LINES
+        ),
+        "max_file_chars": cfg.max_file_chars,
+        "max_total_chars": cfg.max_total_chars,
+    }
 
 
 def _force_utf8_console() -> None:
@@ -142,13 +176,28 @@ def _force_utf8_console() -> None:
 def main(argv: list[str] | None = None) -> int:
     _force_utf8_console()
     args = build_parser().parse_args(argv)
+
+    try:
+        cfg = config.load_config(config.find_config_file(explicit=args.config))
+    except config.ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    for warning in cfg.warnings:
+        print(f"warning: {warning}", file=sys.stderr)
+
+    settings = _resolve_settings(args, cfg)
+    args.context_lines = settings["context_lines"]  # consumed by _read_diff
     diff = _read_diff(args)
 
     executor_kwargs = {}
-    if args.region:
-        executor_kwargs["region"] = args.region
-    if args.model:
-        executor_kwargs["model_id"] = args.model
+    if settings["region"]:
+        executor_kwargs["region"] = settings["region"]
+    if settings["model"]:
+        executor_kwargs["model_id"] = settings["model"]
+    if settings["max_file_chars"] is not None:
+        executor_kwargs["max_file_chars"] = settings["max_file_chars"]
+    if settings["max_total_chars"] is not None:
+        executor_kwargs["max_total_chars"] = settings["max_total_chars"]
     executor = BedrockExecutor(**executor_kwargs) if executor_kwargs else None
 
     try:
@@ -157,7 +206,7 @@ def main(argv: list[str] | None = None) -> int:
             executor=executor,
             branch=args.branch or _current_branch(),
             commit_messages=_git_commit_messages(args.range),
-            ticket_id=args.ticket_id,
+            ticket_id=settings["ticket_id"],
         )
     except MissingCredentialsError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -165,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
 
     rendered = (
         render.to_json(result.report)
-        if args.format == "json"
+        if settings["format"] == "json"
         else render.to_markdown(result.report)
     )
     print(rendered)
@@ -178,7 +227,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.no_write:
         _OUTPUT_DIR.mkdir(exist_ok=True)
-        ext = "json" if args.format == "json" else "md"
+        ext = "json" if settings["format"] == "json" else "md"
         (_OUTPUT_DIR / f"mr_report.{ext}").write_text(rendered, encoding="utf-8")
         (_OUTPUT_DIR / "agent_trace.json").write_text(
             json.dumps(result.trace.entries, indent=2), encoding="utf-8"

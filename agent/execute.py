@@ -55,9 +55,16 @@ def load_system_prompt() -> str:
 
 
 # Per-file and total content caps, so a huge PR can't blow the token budget.
-# Nova Pro has a large context window, so these are generous; tune via env.
-_MAX_PATCH_CHARS = int(os.getenv("MR_MAX_FILE_CHARS") or "12000")
-_MAX_TOTAL_CHARS = int(os.getenv("MR_MAX_TOTAL_CHARS") or "120000")
+# Nova Pro has a large context window, so these are generous. Built-in defaults;
+# overridable per-instance (e.g. from `.pr-decorator.yml`) or via env.
+_DEFAULT_MAX_FILE_CHARS = 12000
+_DEFAULT_MAX_TOTAL_CHARS = 120000
+
+
+def _env_int(name: str, default: int) -> int:
+    """Read an int from the environment, falling back to `default` when unset."""
+    raw = os.getenv(name)
+    return int(raw) if raw else default
 
 
 def _change_kind(change) -> str:
@@ -68,7 +75,7 @@ def _change_kind(change) -> str:
     return "modified"
 
 
-def _render_files(observation: Observation) -> str:
+def _render_files(observation: Observation, *, max_file_chars: int, max_total_chars: int) -> str:
     """Render each changed file with its kind, stats, and actual content.
 
     Caps per-file and total size; once the budget is spent, remaining files are
@@ -80,12 +87,12 @@ def _render_files(observation: Observation) -> str:
         kind = _change_kind(change)
         head = f"=== {change.path} [{kind}, +{change.added_lines}/-{change.removed_lines}] ==="
         body = change.patch.rstrip("\n")
-        if spent >= _MAX_TOTAL_CHARS:
+        if spent >= max_total_chars:
             blocks.append(head + "\n(content omitted — total context budget reached)")
             continue
-        if len(body) > _MAX_PATCH_CHARS:
-            dropped = len(body) - _MAX_PATCH_CHARS
-            body = body[:_MAX_PATCH_CHARS] + f"\n... [truncated {dropped} chars of this file]"
+        if len(body) > max_file_chars:
+            dropped = len(body) - max_file_chars
+            body = body[:max_file_chars] + f"\n... [truncated {dropped} chars of this file]"
         if not body:
             body = "(no textual content captured — likely binary or empty)"
         spent += len(body)
@@ -98,6 +105,8 @@ def _build_user_message(
     plan: Plan,
     only_section: str | None,
     feedback: str | None = None,
+    *,
+    rendered_files: str,
 ) -> str:
     """Render the planned facts into a single user-turn prompt for Bedrock."""
     lines = [
@@ -133,7 +142,7 @@ def _build_user_message(
     lines.append("Evidence — changed files with their content (for understanding")
     lines.append("only; synthesize intent, do NOT echo these names back):")
     lines.append("")
-    lines.append(_render_files(observation))
+    lines.append(rendered_files)
     if only_section:
         lines.append("")
         lines.append(
@@ -163,10 +172,23 @@ class BedrockExecutor:
         region: str = _DEFAULT_REGION,
         model_id: str = _DEFAULT_MODEL_ID,
         client=None,
+        max_file_chars: int | None = None,
+        max_total_chars: int | None = None,
     ) -> None:
         self.region = region
         self.model_id = model_id
         self._client = client
+        # Content caps: explicit arg (e.g. from .pr-decorator.yml) > env > default.
+        self.max_file_chars = (
+            max_file_chars
+            if max_file_chars is not None
+            else _env_int("MR_MAX_FILE_CHARS", _DEFAULT_MAX_FILE_CHARS)
+        )
+        self.max_total_chars = (
+            max_total_chars
+            if max_total_chars is not None
+            else _env_int("MR_MAX_TOTAL_CHARS", _DEFAULT_MAX_TOTAL_CHARS)
+        )
         self._system_prompt = load_system_prompt()
 
     @property
@@ -210,7 +232,14 @@ class BedrockExecutor:
         The model is instructed (via the system prompt) to return JSON shaped as
         {"title": str, "sections": {section_name: str, ...}}.
         """
-        user_message = _build_user_message(observation, plan, only_section, feedback)
+        rendered_files = _render_files(
+            observation,
+            max_file_chars=self.max_file_chars,
+            max_total_chars=self.max_total_chars,
+        )
+        user_message = _build_user_message(
+            observation, plan, only_section, feedback, rendered_files=rendered_files
+        )
         raw = self._converse(user_message)
         return _parse_report(raw)
 

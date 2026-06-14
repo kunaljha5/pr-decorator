@@ -1,0 +1,92 @@
+name: PR Decorator (Automatic)
+
+# Automatically decorates PRs when they are opened, updated, or synchronized
+# Fetches all PR data from GitHub's built-in context - no manual input needed
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  decorate-pr:
+    runs-on: ubuntu-latest
+    # Only run on PRs from the same repository (not forks) for security
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # Configure AWS credentials with External ID
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
+          role-session-name: GitHubActions-AutoPRDecorator
+          aws-region: ${{ vars.AWS_REGION }}
+#          role-external-id: ${{ vars.AWS_IAM_ROLE_EXTERNAL_ID }}
+
+      - name: Upgrade AWS CLI
+        run: |
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip -q awscliv2.zip
+          sudo ./aws/install --update
+          aws --version
+
+      # Test AWS access before proceeding
+      - name: Test AWS Bedrock access
+        run: |
+          echo "Testing Bedrock access..."
+          aws bedrock-runtime invoke-model \
+          --model-id ${{ vars.AWS_BEDROCK_MODEL_ID }} \
+          --body '{"messages":[{"role":"user","content":[{"text":"Test connection"}]}]}' \
+          --region ${{ vars.AWS_REGION }} \
+          --cli-binary-format raw-in-base64-out \
+          test-response.json
+          echo "✅ Bedrock access confirmed"
+
+      # Display PR information (for debugging)
+      - name: Display PR Information
+        run: |
+          echo "🔍 PR Information:"
+          echo "PR Number: ${{ github.event.pull_request.number }}"
+          echo "PR Title: ${{ github.event.pull_request.title }}"
+          echo "Base Branch: ${{ github.event.pull_request.base.ref }}"
+          echo "Head Branch: ${{ github.event.pull_request.head.ref }}"
+          echo "Base SHA: ${{ github.event.pull_request.base.sha }}"
+          echo "Head SHA: ${{ github.event.pull_request.head.sha }}"
+          echo "Author: ${{ github.event.pull_request.user.login }}"
+          echo "Repository: ${{ github.repository }}"
+
+      # Run the PR decorator action with automatic data
+      - name: Run pr-decorator action (automatic)
+        uses: ./
+        with:
+          pr-decorator-version: source
+          pr-number: ${{ github.event.pull_request.number }}
+          base-sha: ${{ github.event.pull_request.base.sha }}
+          head-sha: ${{ github.event.pull_request.head.sha }}
+          head-ref: ${{ github.event.pull_request.head.ref }}
+          aws-region: ${{ vars.AWS_REGION }}
+          region: ${{ vars.AWS_REGION }}
+          mode: "body"  # Default to decorating PR body
+          overwrite: "false"  # Default to not overwriting
+
+      # Optional: Add a comment to indicate the decoration is complete
+      - name: Add completion comment
+        uses: actions/github-script@v9
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: ${{ github.event.pull_request.number }},
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🤖 **PR Decorator Complete**\n\nThis PR has been automatically analyzed and decorated using AWS Bedrock Nova Pro model.\n\n_Triggered by: ${{ github.event_name }} on ${{ github.event.pull_request.head.ref }}_'
+            })
