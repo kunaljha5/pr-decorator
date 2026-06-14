@@ -164,8 +164,10 @@ Create `bedrock-policy.json`:
                 "bedrock:InvokeModel"
             ],
             "Resource": [
-                "arn:aws:bedrock:ap-*::foundation-model/amazon.nova-lite-v1:0",
-                "arn:aws:bedrock:ap-*::foundation-model/amazon.nova-pro-v1:0"
+                "arn:aws:bedrock:::foundation-model/amazon.nova-lite-v1:0",
+                "arn:aws:bedrock:::foundation-model/amazon.nova-pro-v1:0",
+                "arn:aws:bedrock::<YOUR_ACCOUNT_ID>:inference-profile/apac.amazon.nova-pro-v1:0",
+                "arn:aws:bedrock::<YOUR_ACCOUNT_ID>:inference-profile/apac.amazon.nova-lite-v1:0"
             ]
         }
     ]
