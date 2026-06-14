@@ -13,7 +13,63 @@ When a PR is opened or updated, the workflow:
 3. Updates the PR body with a structured summary
 4. Posts a completion comment
 
+
+## Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    autonumber
+
+    actor Dev as 👨‍💻 Developer
+    participant Repo as GitHub Repo
+    participant PR as Pull Request
+    participant GHA as GitHub Actions
+    participant GOIDC as GitHub OIDC Provider<br/>(token.actions.githubusercontent.com)
+    participant STS as AWS STS<br/>(sts.amazonaws.com)
+    participant IAM as IAM Role + Policy
+    participant AOIDC as AWS OpenID<br/>Connector
+    participant BR as Amazon Bedrock<br/>Nova Pro (APAC)
+
+    rect rgb(230, 240, 255)
+        Note over Dev,PR: ── Trigger ──
+        Dev->>Repo: Push branch / open PR
+        Repo->>PR: Create Pull Request
+        PR->>GHA: Trigger workflow<br/>(on: pull_request)
+    end
+
+    rect rgb(255, 248, 230)
+        Note over GHA,AOIDC: ── OIDC Authentication ──
+        GHA->>GOIDC: 1a. Request JWT token
+        GOIDC-->>GHA: 1b. Return signed JWT
+
+        GHA->>STS: 2. AssumeRoleWithWebIdentity(JWT)
+        STS->>AOIDC: 4. Validate JWT against<br/>registered OIDC provider
+        AOIDC-->>STS: JWT valid ✓
+        STS->>IAM: 3. Validates trust policy<br/>& attached permissions
+        IAM-->>STS: Policy allows bedrock:InvokeModel ✓
+        STS-->>GHA: 5. Return temp credentials<br/>(AccessKeyId + SessionToken, 15 min)
+    end
+
+    rect rgb(230, 255, 240)
+        Note over GHA,BR: ── Bedrock Invocation ──
+        GHA->>BR: 6. bedrock-runtime invoke-model<br/>model: amazon.nova-pro-v1:0<br/>body: PR diff + context<br/>auth: temp credentials
+        Note over BR: inference profile/Foundation Model<br/>routes cross-region to<br/>optimal Nova Pro endpoint
+        BR-->>GHA: 7. PR analysis response<br/>(structured summary)
+    end
+
+    rect rgb(230, 240, 255)
+        Note over GHA,PR: ── PR Decoration ──
+        GHA->>PR: 8a. PATCH /pulls/{number}<br/>Update PR body with analysis
+        GHA->>PR: 8b. POST /issues/{number}/comments<br/>Add completion comment
+        PR-->>Dev: 🤖 PR decorated with AI summary
+    end
+```
+
 ---
+
+## Architecture
+
+![pr-decorator.drawio.png](images/pr-decorator.drawio.png)
 
 ## How authentication works
 
