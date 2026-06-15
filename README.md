@@ -1,6 +1,6 @@
 # PR Decorator
 
-Automatically analyses and decorates pull requests using **Amazon Bedrock Nova Pro**. Triggered on every PR open, update, or reopen — no manual input needed.
+Automatically analyses and decorates pull requests using **Amazon Bedrock Nova Pro**. Triggered on every PR open, update, or reopen- no manual input needed.
 
 ---
 
@@ -15,6 +15,8 @@ When a PR is opened or updated, the workflow:
 
 
 ## Sequence Diagram
+
+[![](https://mermaid.ink/img/pako:eNqFVt1u4kYUfpWRL6qsCsYGDMSqIjmgbmiVDQLaSBVSNbYHGMWecWfGZNko0r5AL_qjXlXam170Hfo2eYJ9hJ4zBkOXbGoh8M93fr_vHPPgJDJlTuho9lPJRMJGnK4UzReCwEFLI0WZx0wtxO5OYqQiI7YhVJOPH375--n9zx8__PoP3mKZLBCJuIIqwxNeUGHIlBUS4a-5uSpje3kKmkwRMimzDACQijanmNdX0ZGfKDFcCv0M7GY8Gh4B7eVEyQ1PmfoqVq2LMyPvmHBp5cFdcbMu41IzlUhhmDBuIvNXp45n8xm6jW5neFp50ka7NKfvpKD3-jN24-ga7fBnKjNGviQTmfFke4qM9qljjJuCifHIhhlKIRi2_tTk0jYusimQS5YqmdxZmzdyQ7FschZNouGrPYMK_BC1is_aHa9B2l38CoJd1ni8kYYRuWGW5sZkGpKn39_Dh8wVX63gdnV5MABY8-ICaQ2BQL0msaIiWZMWAT0IYPYARRBg0elQMQqBThnHYzIFFNAd1kHvpbpbZvK-6roUISnA8kdVWe7SZyI9LTMIsMwBfHW8Z8uEOA3b-LpSy0JUmjVogScUVXJSNVhhjpWdT919EeSb2zmx-jrCIqq5L8mPEWxKJYjmK8FSNFmIT12DxELSdkmkdZkzFM4t6PSWxeMU0zLbMzA7KgjwYLUrpOuS72nGU2wxJkRXlAttbPcUW3FtmILAttBiNxoHV9E-X5sD2m_QGXn687dP44GoQ9I5RNPEqBK6UFiF23hfEGoMTdYQD_ZDzrU-zC0e4KKOVQ0GoRlQrUlcyTkciw009Bo2VXaaw76tQd1Vw_KCJFAf9olmutJMlCRM62_ZdpzCBM6YTWOORDWIH5Cci5dU1KnmxE7MZ1V0eRiW3SQSTP1FBaFNz92X2lQl5Jwzwm3JzRxrtvnbs5BUu8YVMNxNIK658UPPPo9lug1xjaZ8uYQC7Sp7WzEOe3wdnrTluSowGy6WIA54F6Ayljxjra9lKdKqiOs6ISVLpDtRUusmagqeGmkfyQJqoBmpVxC0tJBcHE345bQmru_a7S9ottVcQ891Afpg-_2qygRYBfHAGORUbf-XpZdWGrJ0tNIg7oglUr1EEMIHMN-TaD68Ii1cO7r1UL0WH22S3xV2zsAZkkDuYUzrcp71BgtgcjObkxbMAuyM2lsL3h85sFMpNkpTYDEvMmaz2z37z5IEh7B9Q3gT__WH5b4qBpplk4jG-6Yd9cxpOCvFUyeEzrKGk8NIUrx0HhC0cGDr5WzhhHCasiUtM7NwFuIRzOB984OU-d4SBLBaO-ESpARXpW3C7u9DfRd0BJtlCPoxTtjtWx9O-OC8dcJm-9xzvUF74He8oNPtB1634WzhfqfbczuDcz_wznuD_mDQe2w472xc3w26fr_vD7rBeafneW3_8V-NudP3?type=png)](https://mermaid.live/edit#pako:eNqFVt1u4kYUfpWRL6qsCsYOcQJWFckh6oZW2SCgjVQhVWN7MKPYM-7MmCwbRdoX6EV_1KtKe9OLvkPfJk-wj9BzxtjQJZtaCPzznd_vO8c8OIlMmRM6mv1UMZGwS04zRYuFIHDQykhRFTFTC7G9kxipyCVbE6rJxw-__P30_uePH379B2-xXJaIRFxJleEJL6kwZMpKifDX3FxVsb08BE2mCJlUeQ4ASEWbQ8zrq2jPT5QYLoV-BnYzvhztAe3lRMk1T5n6Kla98yMj75hwae3BzbhZVXGlmUqkMEwYN5HFq0PHs_kM3Ua3MzytPWmjXVrQd1LQe_0Zu3F0jXb4M5U5I1-Sicx5sjlERk3qGOOmZGJ8acOMpBAMW39ocmEbF9kUyAVLlUzurM0buaZYNjmKJtHoVcOgAj9EZfHRcd_rkOMT_AqCbdZ4vJGGEblmlubOZBqSp9_fw4fMFc8yuF1f7gwA1j0_R1pDIFCvSKyoSFakR0APApjdQREEWHQ6UoxCoEPG8ZhMAQV0h23Qe6nulrm8r7suRUhKsPxR1Zbb9JlID8sMAixzAF9979kyIU7HNr6t1LIQVWYFWuAJRZUcVA1WmGNt51O3KYJ8czsnVl97WER1m5L8GMGmUoJongmWoslCfOoaJBaSY5dEWlcFQ-Hcgk5vWTxOMS2zOQKzvYIAD1bbQk5c8j3NeYotxoRoRrnQxnZPsYxrwxQEtoWW29HYuYqafG0OaL9GZ-Tpz98-jQeiDkl_F00ToyroQmkVbuN9QagxNFlBPNgPBdd6N7d4gIs2Vj0YhOZAtSZxLedwLNbQ0GvYVPlhDk1bg7arhhUlSaA-7BPNda2ZKEmY1t-yzTiFCZwxm8YcieoQPyAFFy-pqF_PiZ2Yz6roYjcs20kkmPqLCkKbU7cptasqyLlghNuSuwXWbPO3ZyGpd40rYLi7QFx37YeefR7LdBPiGk35cgkF2lX2tmYc9vgqPGjLc1VgNlwsQRzwLkBlLHnOel_LSqR1EddtQkpWSHeipNZd1BQ8NdI-kiXUQHPSriBoaSm52Jvwi2lL3Jlrt7-g-UZzDT3XJeiDNftVVQmwCuKBMSio2vwvSy-tNGRpb6VB3EuWSPUSQQgfwHxPovnoivRw7ejeQ_1afLRJflfaOQNnSAK5hzFty3nWGyyAyc1sTnowC7AzWm89eH8UwE6t2ChNgcWizJnNbvvsP0sSHML2DeFN_Ncflvu6GGiWTSIaN03b65nTcTLFUyeEzrKOU8BIUrx0HhC0cGDrFWzhhHCasiWtcrNwFuIRzOB984OURWMJAshWTrgEKcFVZZuw_fvQ3gUdwWYZgX6MEw6tCyd8cN46Yfd40HeDgT_w_UHQD049_6zjbOB-_8R3g77neafDoXcyBCYfO847G9c-GAwGQz_wTv1h4J09_guN69Py)
 
 ```mermaid
 sequenceDiagram
@@ -69,11 +71,11 @@ sequenceDiagram
 
 ## Architecture
 
-![pr-decorator.drawio.png](images/pr-decorator.drawio.png)
+![pr-decorator.drawio.png](https://raw.githubusercontent.com/kunaljha5/pr-decorator/refs/heads/main/images/pr-decorator.drawio.png)
 
 ## How authentication works
 
-This setup uses **OpenID Connect (OIDC)**. GitHub generates a short-lived token per workflow run. AWS trusts that token and returns temporary credentials — no `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` stored anywhere.
+This setup uses **OpenID Connect (OIDC)**. GitHub generates a short-lived token per workflow run. AWS trusts that token and returns temporary credentials- no `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` stored anywhere.
 
 ---
 
@@ -85,7 +87,7 @@ This setup uses **OpenID Connect (OIDC)**. GitHub generates a short-lived token 
 
 ---
 
-## Step 1 — AWS setup
+## Step 1: AWS setup
 
 ### 1a. Register GitHub as an identity provider
 
@@ -197,7 +199,7 @@ aws iam attach-role-policy \
 
 ---
 
-## Step 2 — GitHub setup
+## Step 2: GitHub setup
 
 ### 2a. Add repository secret
 
@@ -299,7 +301,7 @@ jobs:
 
 ---
 
-## Step 3 — Verify
+## Step 3: Verify
 
 Create a test PR to trigger the workflow:
 
@@ -354,5 +356,5 @@ aws bedrock-runtime invoke-model \
 
 - Fork PRs are blocked — the `if:` condition prevents forks from accessing secrets
 - OIDC tokens are short-lived (15 min) and scoped to a single workflow run
-- The IAM role is limited to `bedrock:InvokeModel` only — no broader AWS access
+- The IAM role is limited to `bedrock:InvokeModel` only- no broader AWS access
 - The trust policy `sub` condition locks the role to this specific repository
